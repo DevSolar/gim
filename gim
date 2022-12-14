@@ -1027,7 +1027,7 @@ package worker
 # 'add' files to version control
 package add
 {
-    our @ISA = 'worker';
+    our @ISA = 'fileworker';
 
     sub run()
     {
@@ -1068,7 +1068,7 @@ contents, recursively.
 # 'chmod' modifies the executable flag of a file
 package chmod
 {
-    our @ISA = 'worker';
+    our @ISA = 'fileworker';
 
     sub run()
     {
@@ -1102,7 +1102,7 @@ Set / unset the executable flag of one or more files.
 # 'clone' a repository
 package clone
 {
-    our @ISA = 'worker';
+    our @ISA = 'fileworker';
 
     sub run()
     {
@@ -1133,7 +1133,7 @@ upstream repository.
 # 'commit' changes in the working directory to local repository.
 package commit
 {
-    our @ISA = 'worker';
+    our @ISA = 'fileworker';
 
     sub run()
     {
@@ -1656,7 +1656,7 @@ Available subcommands are:
 # copy etc.
 package diff # TODO: Handling and documentation of @ARGV
 {
-    our @ISA = 'worker';
+    our @ISA = 'fileworker';
 
     sub run()
     {
@@ -2150,7 +2150,7 @@ commit from each branch.
 # 'init' creates a new repository.
 package init
 {
-    our @ISA = 'worker';
+    our @ISA = 'fileworker';
 
     sub run()
     {
@@ -2209,7 +2209,7 @@ some way, but this is not recommended.
 # 'log' displays change history
 package log
 {
-    our @ISA = 'worker';
+    our @ISA = 'fileworker';
 
     sub run()
     {
@@ -2392,10 +2392,38 @@ into potential problems).
 }
 
 ###################################################################
+# 'revert' a local modification
+package revert
+{
+    our @ISA = 'fileworker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        util::check_argv( 1, -1 );
+        $self->init();
+        util::execute( "git restore -- @ARGV", rc => -1 );
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'revert' } =
+{
+    category => 'local',
+    about => 'Revert local modification',
+    usage => q{gim revert <filespec> [<filespec>...]
+},
+    help => q{Revert a local modification.
+}};
+
+}
+
+###################################################################
 # 'rmbranch' creates a new branch
 package rmbranch
 {
-    our @ISA = 'worker';
+    our @ISA = 'branchworker';
 
     sub run()
     {
@@ -2590,7 +2618,7 @@ for details.)
 # 'switch' to a different branch
 package switch
 {
-    our @ISA = 'worker';
+    our @ISA = 'branchworker';
 
     sub run()
     {
