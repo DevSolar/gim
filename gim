@@ -1023,6 +1023,16 @@ package worker
     }
 }
 
+package fileworker
+{
+    our @ISA = 'worker';
+}
+
+package branchworker
+{
+    our @ISA = 'worker';
+}
+
 ###################################################################
 # 'add' files to version control
 package add
@@ -1356,6 +1366,80 @@ package devel
             }
 
             close( $script );
+            dbg::leave();
+        }
+    }
+
+    # 'devel completion' generates bash code for command line
+    # completion.
+    package devel::completion
+    {
+        our @ISA = 'devel';
+
+        sub run()
+        {
+            dbg::enter();
+            use mro;
+            my @worker = sort grep( !/::|worker/, @{ mro::get_isarev( 'worker' ) } );
+            my $fileworker = join( "|", sort grep( !/::/, @{ mro::get_isarev( 'fileworker' ) } ) );
+            my $branchworker = join( "|", sort grep( !/::/, @{ mro::get_isarev( 'branchworker' ) } ) );
+            my @devel = sort map( s/.*:://r, @{ mro::get_isarev( 'devel' ) } );
+            my @topics = sort keys %_topic;
+            ( my $completion = qq{#!/usr/bin/env bash
+
+            _gim_completions()
+            {
+                compopt +o default
+                local cur prev
+                cur="\${COMP_WORDS[COMP_CWORD]}"
+                prev="\${COMP_WORDS[COMP_CWORD-1]}"
+
+                case \${#COMP_WORDS[@]} in
+                    2)
+                        COMPREPLY+=(\$(compgen -W "@worker" -- "\$cur"))
+                        ;;
+                    3)
+                        case \$prev in
+                            help)
+                                COMPREPLY+=(\$(compgen -W "@worker topic" -- "\$cur"))
+                                ;;
+                            devel)
+                                COMPREPLY+=(\$(compgen -W "@devel" -- "\$cur"))
+                                ;;
+                            $fileworker)
+                                compopt -o default
+                                COMPREPLY=()
+                                ;;
+                            $branchworker)
+                                COMPREPLY+=(\$(compgen -W "\$(git for-each-ref --format="%(refname:strip=2)" refs/heads/*)" -- "\$cur"))
+                                ;;
+                        esac
+                        ;;
+                    4)
+                        case \$prev in
+                            topic)
+                                COMPREPLY+=(\$(compgen -W "@topics" -- "\$cur"))
+                                ;;
+                            *)
+                                compopt -o default
+                                COMPREPLY=()
+                                ;;
+                        esac
+                        ;;
+                    *)
+                        compopt -o default
+                        COMPREPLY=()
+                        ;;
+                esac
+            }
+
+            complete -F _gim_completions gim
+})
+            =~ s/^ {8}//mg;
+            open( my $fh, '>', 'gim-completion.bash' ) || die( "Error: Could not open 'gim-completion.bash' for writing.\n" . $! );
+            print( $fh $completion );
+            close( $fh );
+            chmod( 0755, 'gim-completion.bash' );
             dbg::leave();
         }
     }
