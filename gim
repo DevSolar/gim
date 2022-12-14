@@ -14,6 +14,36 @@ use constant E_SUB_UNKNOWN   =>  2;  # Subcommand unknown
 use constant E_EXECUTE_FAIL  =>  3;  # Execution failure
 use constant E_SIG_INTERRUPT =>  4;  # Interrupted by signal
 use constant E_UNEXPECTED    =>  5;  # Unexpected backend error
+###################################################################
+# Colors
+
+# Default is 'no color'
+my $_COLOR   = 'never';
+my $_RED     = '';
+my $_GREEN   = '';
+my $_BLUE    = '';
+my $_YELLOW  = '';
+my $_MAGENTA = '';
+my $_CYAN    = '';
+my $_RESET   = '';
+
+if ( -t STDOUT )
+{
+    # If we are printing to terminal, *do* use colors.
+    use Term::ANSIColor  qw( :constants );
+    $_COLOR   = 'always';
+    $_RED     = ::RED;
+    $_GREEN   = ::GREEN;
+    $_BLUE    = ::BLUE;
+    $_YELLOW  = ::YELLOW;
+    $_MAGENTA = ::MAGENTA;
+    $_CYAN    = ::CYAN;
+    $_RESET   = ::RESET;
+}
+
+# Color Scheme
+my $_ERROR_COL    = $_RED;
+my $_WARN_COL     = $_YELLOW;
 
 ###################################################################
 ###################################################################
@@ -34,12 +64,12 @@ package util
         {
             if ( $rc == -1 )
             {
-                util::throw( ::E_EXECUTE_FAIL, 'Error: Failed to execute ‘sh’.' );
+                util::throw( ::E_EXECUTE_FAIL, util::text( 'Error: Failed to execute ‘[_1]’.', 'sh' ) );
             }
             elsif ( $rc & 127 )
             {
                 $rc &= 127;
-                util::throw( ::E_SIG_INTERRUPT, "Error: ‘$command’ interrupted by signal $rc ‘$sig_names[$rc]’." );
+                util::throw( ::E_SIG_INTERRUPT, util::text( 'Error: ‘[_1]’ interrupted by signal [_2] ‘[_3]’.', $command, $rc, $sig_names[ $rc ] ) );
             }
             else
             {
@@ -48,15 +78,17 @@ package util
                 if ( $rc > 128 )
                 {
                     $rc -= 128;
-                    util::throw( ::E_SIG_INTERRUPT, "Error: ‘$command’ interrupted by signal $rc ‘$sig_names[$rc]’." );
+                    util::throw( ::E_SIG_INTERRUPT, util::text( 'Error: ‘[_1]’ interrupted by signal [_2] ‘[_3]’.', $command, $rc, $sig_names[ $rc ] ) );
                 }
                 if ( $rc == 127 )
                 {
-                    util::throw( ::E_EXECUTE_FAIL, "Error: Failed to execute ‘$command’.\nCommand not found." );
+                    util::throw( ::E_EXECUTE_FAIL, util::text( 'Error: Failed to execute ‘[_1]’.', $command ) .
+                                                   util::text( 'Command not found.' )
+                    );
                 }
                 elsif ( $rc == 126 )
                 {
-                    util::throw( ::E_EXECUTE_FAIL, "Error: Command ‘$_[0]’ not executable." );
+                    util::throw( ::E_EXECUTE_FAIL, util::text( 'Error: Command ‘[_1]’ not executable.', $command ) );
                 }
             }
         }
@@ -91,8 +123,8 @@ package util
 
         if ( ( $options{ rc } == -1 ) && ( $rc != 0 ) )
         {
-            util::throw( ::E_UNEXPECTED, 'Error: Failed to execute ‘' . caller(0) . "’.\n" .
-                                         "‘$command’ returned ‘$rc’:\n" .
+            util::throw( ::E_UNEXPECTED, util::text( 'Error: Failed to execute ‘[_1]’.', caller(0) ) .
+                                         util::text( '‘[_1]’ returned ‘[_2]’:', $command, $rc ) .
                                          $output . "\n" );
         }
 
@@ -139,7 +171,7 @@ package util
 
         if ( ! defined( $subcommand ) )
         {
-            util::throw( ::E_SUB_MISSING, 'Error: No subcommand given to ‘' . $command . '’.' );
+            util::throw( ::E_SUB_MISSING, util::text( 'Error: No subcommand given to ‘[_1]’.', $command ) );
         }
 
         if ( $package->isa( 'worker' ) && $package ne 'worker' )
@@ -148,10 +180,41 @@ package util
         }
         else
         {
-            util::throw( ::E_SUB_UNKNOWN, 'Error: Unknown subcommand ‘' . $subcommand . '’' );
+            util::throw( ::E_SUB_UNKNOWN, util::text( 'Error: Unknown subcommand ‘[_1]’.', $subcommand ) );
         }
 
         return $rc;
+    }
+
+    # Given a basic message and a list of arguments, this function:
+    # 1) inserts arguments in place of placeholders '[_1]', '[_2]'
+    #    etc. in the basic message;
+    # 2) If input message started with "Error:" or "Warning:", will
+    #    color output message up to the first ":" with _ERROR_COL /
+    #    _WARN_COL.
+    sub text( $;@ )
+    {
+        my $text = $_[0];
+
+        # Replace '[_n]' with argument #n.
+        for ( my $i = 1; $i < @_; ++$i )
+        {
+            $text =~ s/\[_$i\]/$_[ $i ]/;
+        }
+
+        if ( $_[0] =~ m/^Error:/ )
+        {
+            $text =~ s/^/$_ERROR_COL/;
+            $text =~ s/:/:$_RESET/;
+        }
+
+        if ( $_[0] =~ m/^Warning:/ )
+        {
+            $text =~ s/^/$_WARN_COL/;
+            $text =~ s/:/:$_RESET/;
+        }
+
+        return $text . "\n";
     }
 
     # Throw Gim two-element exception: $0 as the error code, $1 as
@@ -191,7 +254,7 @@ package executor
         if ( $@ )
         {
             $self->{ pid } = 0;
-            util::throw( ::E_EXECUTE_FAIL, "Error: Failed to execute ‘$self->{ command }’.\n" . $! . "\n" );
+            util::throw( ::E_EXECUTE_FAIL, util::text( 'Error: Failed to execute ‘[_1]’.', $self->{ command } ) . $! . "\n" );
         }
 
         $self->{ 'linecount' } = 0;
@@ -356,6 +419,8 @@ package devel
 ###################################################################
 ###################################################################
 package gim;
+
+print( $_RESET );
 
 my $command = util::subcommand();
 $command->run();
