@@ -2602,6 +2602,35 @@ $_help{ 'revert' } =
 }
 
 ###################################################################
+# 'rm' files
+package rm
+{
+    our @ISA = 'fileworker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        util::check_argv( 1, -1 );
+        $self->init();
+        my @args = util::qtd( @ARGV );
+        util::execute( "git rm @args", rc => -1 );
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'rm' } =
+{
+    category => 'local',
+    about => 'Remove files from version control',
+    usage => q{gim rm ...
+},
+    help => q{Remove files from version control.
+}};
+
+}
+
+###################################################################
 # 'rmbranch' creates a new branch
 package rmbranch
 {
