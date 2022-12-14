@@ -2983,6 +2983,35 @@ on ‘detached HEAD’ state.)
 }
 
 ###################################################################
+# 'tag' commits
+package tag
+{
+    our @ISA = 'fileworker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        util::check_argv( 1, -1 );
+        $self->init();
+        my @args = util::qtd( @ARGV );
+        util::execute( "git tag @args", rc => -1 );
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'tag' } =
+{
+    category => 'local',
+    about => 'Tag commits',
+    usage => q{gim tag ...
+},
+    help => q{Tag commits.
+}};
+
+}
+
+###################################################################
 # 'uncommit' allows to undo local (unpublished) commits.
 package uncommit
 {
