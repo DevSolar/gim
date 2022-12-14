@@ -22,6 +22,12 @@ use constant E_NOTFILE       =>  7;  # Not a regular file
 use constant E_NOTFILEORDIR  =>  8;  # Not a regular file or directory
 use constant E_NOTTRACKED    =>  9;  # Not a file under version control
 use constant E_INTERNAL      => 10;  # Internal error
+use constant E_NOWORKINGCOPY => 11;  # Not a working copy
+
+###################################################################
+# Repo Status
+use constant S_OK            =>  0;
+use constant S_DETACHED      =>  1;
 
 ###################################################################
 # Colors
@@ -183,6 +189,79 @@ package dbg
             dbg::msg( 'dbg::END' );
             close( $_dbg );
         }
+    }
+}
+
+###################################################################
+###################################################################
+# 'git' covers various backend operations shared across Gim.
+package git
+{
+    # Provides a log of the local repository, additional arguments
+    # being optional. The fields (separated with ASCII FS, 0x1f):
+    # - hash, complete
+    # - timestamp, ISO
+    # - timestamp, relative
+    # - author name
+    # - author email
+    # - refs, colored
+    # - commit subject
+    #my ( $hash, $time_iso, $time_rel, $name, $mail, $refs, $msg ) = split( '\x{1f}' );
+    sub log( ;$ )
+    {
+        return new executor( "git log --color=$_COLOR --pretty=format:'%H\x{1f}%ai\x{1f}%ar\x{1f}%aN\x{1f}%aE\x{1f}%C(auto)%d\x{1f}%s' @_", throw => 1 );
+    }
+
+    # Get a list of remotes
+    sub remotes()
+    {
+        dbg::enter();
+        my @remotes = split( "\n", util::execute( 'git remote', rc => -1, out => 1 ) );
+        dbg::leave();
+        return @remotes;
+    }
+
+    # Get a list of uncommitted changes in working directory
+    sub uncommitted()
+    {
+        dbg::enter();
+        my $output = util::execute( "git -c color.status=$_COLOR status --short",
+                                    rc => -1, out => 1 );
+        dbg::leave();
+        return $output;
+    }
+
+    # Return the upstream and push branches for a given branch
+    sub upstream( $ )
+    {
+        dbg::enter();
+        my $command = 'git rev-parse --abbrev-ref --symbolic-full-name ' . $_[0];
+
+        my ( $urc, $upstream ) = util::execute( $command . '@{upstream}', out => 1 );
+
+        if ( $urc )
+        {
+            undef( $upstream );
+        }
+
+        my ( $prc, $push ) = util::execute( $command . '@{push}', out => 1 );
+
+        if ( $prc )
+        {
+            undef( $push );
+        }
+
+        dbg::leave();
+        return ( $upstream, $push );
+    }
+
+    # Get the URL of a given remote
+    sub url( $ )
+    {
+        dbg::enter();
+        my $url = util::execute( 'git config remote.' . $_[0] . '.url', rc => -1, out => 1 );
+        dbg::leave();
+        return $url;
     }
 }
 
@@ -855,6 +934,57 @@ package worker
         dbg::leave();
         return $self;
     }
+
+    sub init()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        $self->{ 'repo_status' } = ::S_OK;
+
+        # Git directory
+        my $command = 'git rev-parse --git-dir';
+        ( my $rc, $self->{ 'git_dir' } ) = util::execute( $command, out => 1 );
+
+        if ( $rc != 0 )
+        {
+            if ( $rc == 128 )
+            {
+                util::throw( ::E_NOWORKINGCOPY, util::text( 'Error: ‘[_1]’ requires a working copy.', 'gim ' . caller(0) ) );
+            }
+            else
+            {
+                util::throw( ::E_UNEXPECTED, util::text( 'Error: Failed to execute ‘[_1]’.', 'worker::init' ) .
+                                             util::text( '‘[_1]’ returned ‘[_2]’:', $command, $rc ) .
+                                             $self->{ 'git_dir' } . "\n"
+                );
+            }
+        }
+
+        dbg::msg( 'git_dir is \'' . $self->{ 'git_dir' } . '\'' );
+
+        # Current branch
+        ( $rc, $self->{ 'current_branch' } ) = util::execute( 'git symbolic-ref --short HEAD',
+                                                              out => 1 );
+
+        if ( $rc == 128 )
+        {
+            $self->{ 'current_branch' } = '<unnamed>';
+            $self->{ 'repo_status' } = ::S_DETACHED;
+        }
+
+        dbg::msg( 'current branch is \'' . $self->{ 'current_branch' } . '\'' );
+
+        # Latest pushed
+        ( $rc, $self->{ 'latest_pushed' } ) = util::execute( 'git rev-parse @{push}',
+                                                             out => 1 );
+
+        if ( $rc )
+        {
+            undef( $self->{ 'latest_pushed' } );
+        }
+
+        dbg::leave();
+    }
 }
 
 ###################################################################
@@ -1055,6 +1185,7 @@ package devel
             my $self = shift( @_ );
             my $pager = util::pager();
             my ( $rc, $output );
+            %_catalog = (); # Disabling localization of error messages
 
             # preparing test executable
             ( my $testexe = q{#!/usr/bin/env bash
@@ -1141,6 +1272,19 @@ package devel
             @ARGV = ( ); eval { util::check_argv( 1, 1 ); }; if ( $@ ) { die unless $@ =~ /.*Error:.* Too few arguments./; }
             @ARGV = ( 1, 2 ); eval { util::check_argv( 1, 1 ); }; if ( $@ ) { die unless $@ =~ /.*Error:.* Too many arguments./; }
             @ARGV = ( 1, 2 ); eval { util::check_argv( 2, 2 ); }; if ( $@ ) { die unless $@ =~ /.*Error:.* Too few arguments./; }
+
+            # init
+            $self->init();
+            dbg::msg( '* git_dir:             ' . $self->{ 'git_dir' } );
+            dbg::msg( '* current_branch:      ' . $self->{ 'current_branch' } );
+            dbg::msg( '* latest_pushed:       ' . $self->{ 'latest_pushed' } );
+
+            # 'git'
+            dbg::msg( '* git::uncommitted:    ' . git::uncommitted() );
+            my ( $upstream, $push ) = git::upstream( $self->{ 'current_branch' } );
+            dbg::msg( '* git::upstream:       ' . $upstream . ' - ' . $push );
+            dbg::msg( '* git::remotes:        ' . join( ' - ', git::remotes() ) );
+            dbg::msg( '* git::url:            ' . git::url( 'origin' ) );
 
             # Clean up
             unlink( 'testexe' );
