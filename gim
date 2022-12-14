@@ -69,6 +69,11 @@ my $_TIME_COL     = $_BLUE;
 my $_NAME_COL     = $_CYAN;
 my $_STASH_COL    = $_YELLOW;
 my $_HASH_COL     = $_YELLOW;
+my $_LOCAL_COL    = $_GREEN;
+my $_REMOTE_COL   = $_RED;
+my $_URL_COL      = $_MAGENTA;
+my $_REF_COL      = $_CYAN;
+my $_SYMREF_COL   = $_GREEN;
 
 ###################################################################
 # Globals
@@ -1961,6 +1966,182 @@ Use ‘gim help’ to get an overview of the available subcommands, and
 There are also general help topics available. You get a list of
 these with ‘gim help topic’, and display a specific topic with ‘gim
 help topic <topic>’.
+}};
+
+}
+
+###################################################################
+# 'info' about given repository.
+package info
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        my $verbose;
+        ::GetOptions(
+            "verbose|v" => \$verbose
+        );
+        $self->init();
+        my $pager = util::pager();
+        my @remotes = split( "\n", util::execute( "git remote show -n", rc => -1, out => 1 ) );
+
+        if ( @ARGV )
+        {
+            foreach ( @ARGV )
+            {
+                my $remote = $_;
+                if ( ! grep( /^$remote$/, @remotes ) )
+                {
+                    util::throw( ::E_SYNTAX, util::text( "Error: No such remote: ‘[_1]’.", $_ ) );
+                }
+            }
+
+            foreach ( @ARGV )
+            {
+                my $remote = $_;
+                my ( $pattern ) = util::qtd( $remote . '/*' );
+
+                printf( $pager "  %s%-12s%s  %s%s%s\n",
+                               $_REMOTE_COL, $remote, $_RESET,
+                               $_URL_COL,
+                               util::execute( "git config remote.$remote.url", rc => -1, out => 1 ),
+                               $_RESET
+                      );
+
+                foreach ( split( "\n", util::execute( "git branch --remotes --list --format='%(refname:lstrip=2)%(symref:lstrip=2)' $pattern", rc => -1, out => 1 ) ) )
+                {
+                    chomp;
+                    my ( $ref, $symref ) = map { s/$remote\///r } split( "\x{1f}" );
+                    printf( $pager "    %s%s%s", $_REF_COL, $ref, $_RESET );
+
+                    if ( $symref )
+                    {
+                        printf( $pager "  ->  %s%s%s", $_SYMREF_COL, $symref, $_RESET );
+                    }
+
+                    print( $pager "\n" );
+
+                    if ( $verbose && ! defined( $symref ) )
+                    {
+                        my $log = git::log( "--max-count=1 $ref" );
+                        my ( $hash, $time_iso, $time_rel, $name, $mail, $refs, $msg ) = split( '\x{1f}', $log->readline() );
+                        $log->close();
+                        printf( $pager "$_TIME_COL%15s$_RESET  $_NAME_COL%-15s$_RESET  %s", $time_rel, $name, $msg );
+                    }
+                }
+            }
+        }
+        else
+        {
+            if ( scalar( @remotes ) > 0 )
+            {
+                if ( scalar( @remotes ) == 1 )
+                {
+                    print( $pager util::text( "Remote:" ) );
+                }
+                else
+                {
+                    print( $pager util::text( "Remotes:" ) );
+                }
+
+                foreach ( @remotes )
+                {
+                    printf( $pager "  %s%-12s%s  %s%s%s\n",
+                        $_REMOTE_COL, $_, $_RESET,
+                        $_URL_COL,
+                        util::execute( "git config remote.$_.url", rc => -1, out => 1 ),
+                        $_RESET
+                    );
+                }
+
+                print( $pager util::separator() );
+            }
+
+            my @heads = split( "\n", util::execute( "git for-each-ref --format \"%(refname:lstrip=2)\" refs/heads", rc => 0, out => 1 ) );
+            print( $pager util::text( "Local Branches:            Tracking:" ) );
+
+            foreach ( @heads )
+            {
+                if ( $_ eq $self->{ 'current_branch' } )
+                {
+                    printf( $pager "%s* ", $_CURRENT_COL );
+                }
+                else
+                {
+                    printf( $pager "  %s", $_LOCAL_COL );
+                }
+
+                printf( $pager "%-20s%s", $_, $_RESET );
+                my ( $upstream, $push ) = git::upstream( $_ );
+
+                if ( defined( $upstream ) || defined( $push ) )
+                {
+                    if ( defined( $upstream ) && defined( $push ) && ( $upstream eq $push ) )
+                    {
+                        printf( $pager "<->  %s%s",
+                            $_UPSTREAM_COL, $upstream
+                        );
+                    }
+                    else
+                    {
+                        if ( defined( $upstream ) )
+                        {
+                            printf( $pager "<-   %s%s%s  ",
+                                $_UPSTREAM_COL, $upstream, $_RESET,
+                            );
+                        }
+
+                        if ( defined( $push ) )
+                        {
+                            printf( $pager "->   %s%s",
+                                $_PUSH_COL, $push
+                            );
+                        }
+                    }
+                }
+                else
+                {
+                    printf( $pager "     %s%s%s",
+                        $_REMOTE_COL, "(none)", $_RESET
+                    );
+                }
+
+                printf( $pager "%s\n", $_RESET );
+
+                if ( $verbose )
+                {
+                    my $log = git::log( "--max-count=1 $_" );
+                    my ( $hash, $time_iso, $time_rel, $name, $mail, $refs, $msg ) = split( '\x{1f}', $log->readline() );
+                    $log->close();
+                    printf( $pager "$_TIME_COL%15s$_RESET  $_NAME_COL%-15s$_RESET  %s\n", $time_rel, $name, $msg );
+                }
+            }
+        }
+
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'info' } =
+{
+    category => 'info',
+    about => 'Show info on remotes and branches',
+    usage => q{gim info [--verbose|-v] [remote ...]
+},
+    help => q{Show info on remotes and branches.
+
+In its parameterless version, shows the remotes of the repository
+and all branches from it, including where that branch fetches and
+pushes to.
+
+If one or more remote names are given, a list of available branches
+of that remote is given instead of a list of local branches.
+
+The ‘--verbose’ / ‘-v’ option will additionally show the latest
+commit from each branch.
 }};
 
 }
