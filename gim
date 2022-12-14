@@ -2542,6 +2542,35 @@ $_help{ 'mkbranch' } =
 }
 
 ###################################################################
+# 'mv' files
+package mv
+{
+    our @ISA = 'fileworker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        util::check_argv( 2, -1 );
+        $self->init();
+        my @args = util::qtd( @ARGV );
+        util::execute( "git mv @args", rc => -1 );
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'mv' } =
+{
+    category => 'local',
+    about => 'Move files',
+    usage => q{gim mv ...
+},
+    help => q{Move files.
+}};
+
+}
+
+###################################################################
 # 'push' publishes your local commits
 package push
 {
