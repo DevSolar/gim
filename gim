@@ -2522,6 +2522,43 @@ for details.)
 }
 
 ###################################################################
+# 'switch' to a different branch
+package switch
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        $self->init();
+        my $detach = '';
+        Getopt::Long::GetOptions(
+            'detach|d' => sub { $detach = '--detach'; }
+        );
+        util::check_argv( 1, 1 );
+        my $branch = shift( @ARGV );
+        util::execute( "git switch $detach -- $branch", rc => -1 );
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'switch' } =
+{
+    category => 'local',
+    about => 'Switch to given branch',
+    usage => q{gim switch [--detach|-d] <branch>
+},
+    help => q{Switch working copy to given branch.
+
+Use the ‘--detach’ / ‘-d’ option if you want to detach from
+existing branches. (Check ‘gim help topic detached’ for details
+on ‘detached HEAD’ state.)
+}};
+
+}
+
+###################################################################
 # 'uncommit' allows to undo local (unpublished) commits.
 package uncommit
 {
