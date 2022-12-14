@@ -2392,6 +2392,41 @@ into potential problems).
 }
 
 ###################################################################
+# 'rmbranch' creates a new branch
+package rmbranch
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        util::check_argv( 1, -1 );
+        $self->init();
+        my $branch = shift( @ARGV );
+
+        if ( $branch eq $self->{ 'current_branch' } )
+        {
+            util::throw( ::E_UNABLE, util::text( "Error: Cannot act on current branch." ) );
+        }
+
+        util::execute( "git branch -D -- $branch", rc => -1 );
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'rmbranch' } =
+{
+    category => 'local',
+    about => 'Delete a local branch',
+    usage => q{gim rmbranch <branch>
+},
+    help => q{Delete a local branch.
+}};
+
+}
+
+###################################################################
 # 'status' gives information about the repository's current state
 package status
 {
