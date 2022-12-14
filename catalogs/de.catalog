@@ -1,0 +1,397 @@
+# General output
+
+'Additional help on Gim topics:'              => 'Zusätzliche Hilfe zu Gim-Themen:'
+'Available subcommands:'                      => 'Verfügbare Unterbefehle:'
+'Available topics:'                           => 'Verfügbare Themen:'
+'Changes merged.'                             => 'Änderungen übernommen.'
+'Command not found.'                          => 'Befehl nicht gefunden.'
+'Current branch:'                             => 'Aktueller Branch:'
+'Installed / available diff tools:'           => 'Installierte / verfügbare diff-Tools:'
+'Local repository up to date.'                => 'Lokales Repository ist aktuell.'
+'No unmerged changes.'                        => 'Keine nicht übernommenen Änderungen.'
+'No upstream.'                                => 'Kein Upstream.'
+'Repository in ‘detached HEAD’ state, cannot update.' => 'Repository im Zustand ‘detached HEAD’, kann nicht aktualisieren.'
+'Stashed:'                                    => 'Stashed:'
+'Supported but not installed:'                => 'Unterstützt aber nicht installiert:'
+'Try ‘[_1]’.'                                 => 'Versuchen Sie ‚[_1]‘.'
+'Uncommitted:'                                => 'Nicht committed:'
+'Unmerged:'                                   => 'Nicht übernommen:'
+'Unpublished:'                                => 'Nicht veröffentlicht:'
+'Usage:'                                      => 'Verwendung:'
+'‘[_1]’ returned ‘[_2]’:'                     => '‚[_1]‘ lieferte ‚[_2]‘:'
+
+# Warning messages
+
+'Warning: Could not open debug output file ‘[_1]’.'               => 'Warnung: Konnte Debug-Ausgabedatei ‚[_1]’ nicht öffnen.'
+'Warning: ‘[_1]’ is a symbolic link, which is not portable.'      => 'Warnung: ‚[_1]‘ ist ein symbolischer Link, was nicht portabel ist.'
+
+# Error messages
+
+'Error: Command ‘[_1]’ not executable.'                           => 'Fehler: Befehl ‚[_1]‘ nicht ausführbar.'
+'Error: Conflicting options ‘[_1]’ and ‘[_2]’.'                   => 'Fehler: Widersprüchliche Optionen ‚[_1]‘ and ‚[_2]‘.'
+'Error: Failed to execute ‘[_1]’.'                                => 'Fehler: Konnte ‚[_1]‘ nicht ausführen.'
+'Error: No subcommand given to ‘[_1]’.'                           => 'Fehler: Kein Unterbefehl für ‚[_1]‘.'
+'Error: Too few arguments.'                                       => 'Fehler: Zu wenige Parameter.'
+'Error: Too many arguments.'                                      => 'Fehler: Zu viele Parameter.'
+'Error: Unknown subcommand ‘[_1]’.'                               => 'Fehler: Unbekannter Unterbefehl ‚[_1]‘.'
+'Error: Unknown topic ‘[_1]’.'                                    => 'Fehler: Unbekanntes Thema ‚[_1]‘.'
+'Error: ‘[_1]’ already exists.'                                   => 'Fehler: ‘[_1]’ existiert bereits.'
+'Error: ‘[_1]’ interrupted by signal [_2] ‘[_3]’.'                => 'Fehler: ‘[_1]’ unterbrochen durch Signal [_2] ‘[_3]’.'
+'Error: ‘[_1]’ is neither regular file nor directory.'            => 'Fehler: ‚[_1]‘ ist weder reguläre Datei noch Verzeichnis.'
+'Error: ‘[_1]’ is not a regular file.'                            => 'Fehler: ‚[_1]‘ ist keine reguläre Datei.'
+'Error: ‘[_1]’ is not under version control.'                     => 'Fehler: ‘[_1]’ nicht unter Versionskontrolle.'
+'Error: ‘[_1]’ requires a working copy.'                          => 'Fehler: ‚[_1]‘ erfordert ein Arbeitsverzeichnis.'
+
+# Categories
+
+'Obtaining information'             => 'Infomation abfragen'               # info
+'Act on your local repository'      => 'An lokalen Repository arbeiten'    # local
+'Act on a remote repository'        => 'An Remote-Repository arbeiten'     # remote
+
+####################################################################
+# Subcommands
+
+[add]
+
+Dateien der Versionskontrolle hinzufügen
+
+Dateien der Versionskontrolle hinzufügen.
+
+Tatsächlich werden die Dateien nur vorgemerkt, und mit dem nächsten
+Commit dem lokalen Repository hinzugefügt.
+
+Als Argument angegebene Verzeichnisse werden rekursiv inklusive
+ihres Inhalts hinzugefügt.
+
+[blame]
+
+Zeige an wer wann welche Zeile geändert hat
+
+Zeige an wer wann welche Zeile geändert hat.
+
+[chmod]
+
+Ändern der Ausführbarkeit
+
+Ändert die Ausführbarkeit einer oder meherer Datein.
+
+Setzt oder löscht das Executable-Flag einer oder mehrerer Dateien.
+
+[clone]
+
+Ein Repository klonen
+
+Ein Repository klonen.
+
+Erzeuge ein neues lokales Repository und eine Arbeitskopie als Klon
+eines Upstream-Repositories.
+
+[commit]
+
+Änderungen ins lokale Repository einchecken
+
+Änderungen ins lokale Repository einchecken.
+
+Die erste Variante öffnet einen Editor, in dem der Commit-Kommentar
+eingegeben werden kann.
+
+Die zweite Variante benutzt den gegebenen String als Commit-Kommentar.
+
+Die dritte Variante benutzt den Inhalt der angegebenen Datei als
+Commit-Kommentar.
+
+Mit der Option ‚--amend‘ wird der letzte Commit (der noch nicht
+veröffentlicht sein darf) ergänzt, statt einen neuen Commit anzulegen.
+
+[devel]
+
+Maintainer-Funktionen
+
+Verschiedene Funktionen für die Maintainer von gim.
+
+Verfügbare Unterbefehle:
+
+ * catalog  --  Schreibt eine Datei “i-default.catalog” mit übersetzbaren Strings
+
+ * qtd      --  Testfunktion für util::qtd
+
+ * setup    --  Erzeugt einige Repositories für Funktionstests
+
+ * test     --  Führt einige Regressionstests aus
+
+ * todo     --  Listet TODO Kommentare im Skript auf
+
+[diff]
+
+Zeige Unterschiede
+
+Zeige Unterschiede zwischen Commits, Commits und dem
+Arbeitsverzeichnis, usw.
+
+Sofern nicht anders angegeben wird ‚git-diff‘ benutzt,
+mit ‚--unified=3 --function-context‘ als Default-Optionen.
+Diese können durch Setzen der Umgebungsvariable GIM_DIFFOPTS
+geändert werden.
+
+Man kann ein anderes Werkzeug als ‚diff‘ mit der Option
+‚--tool‘ angeben (Kurzform ‚-t‘). Diese Auswahl kann durch
+Setzen der Umgebungsvariable GIM_DIFFTOOL festgeschrieben
+werden.
+
+Um eine Liste der verfügbaren (und unterstützten aber nicht
+verfügbaren) Werkzeuge anzuzeigen gib es die Option ‚--tools‘
+oder ‚--tool-help‘.
+
+[fetch]
+
+Änderungen von Upstream-Repository holen
+
+Änderungen von Upstream-Repository holen.
+
+Auf das Arbeitsverzeichnis werden noch keine Änderungen
+angewendet.
+
+[help]
+
+Diese Zusammenfassung
+
+Gim hat sein eigenes Hilfesystem. Idealerweise ist es alles was Sie
+brauchen werden.
+
+Benutzen Sie ‚gim help‘ für eine Übersicht der verfügbaren Unterbefehle,
+und ‚gim help <subcommand>‘ um die Hilfe für einen spezifisches Unterbefehl
+zu bekommen.
+
+Es gibt auch allgemeine Hilfethemen. Eine Liste dieser Themen erhalten Sie
+mit ‚gim help topic‘, und mit ‚gim help topic <topic>‘ wird das entsprechende
+Thema angezeigt.
+
+[info]
+
+Zeige Informationen zu Remotes und Branches
+
+Zeite Informationen zu Remotes und Branches.
+
+In der parameterlosen Version werden dei Remotes des Repositories und
+alle dessen Branches aufgelistet, inklusive woher jeder Branch fetched
+und pushed.
+
+Werden ein oder mehrere Remotes angegeben, wird statt der Liste lokaler
+Branches eine Liste der remote verfügbaren Branches angegeben.
+
+Die ‚--verbose’ / ‚-v’ Option führt zusätzlich den letzten Commit jedes
+Branches auf.
+
+[init]
+
+Erzeuge neues Repository
+
+Erzeuge ein neues Repository.
+
+Per Default wird ein „bare”-Repository erstellt, welches man dann
+an einen zugänglichen und sicheren Ort (wie einen Datei- / Web- /
+Cloud-Server) hochladen sollte. Anschließend kann man mit ‚gim clone‘
+einen Klon des Repositories mit Arbeitsverzeichnis anlegen. Dies ist
+das empfohlene Vorgehen.
+
+Mit der Option ‚--local’ (Kurzform ‚-l’) kann man direkt ein lokales
+Repository mit Arbeitsverzeichnis anlegen, und ohne ein Upstream-
+Repository arbeiten.
+
+Wenn man ein lokales Repository zugänglich macht, könnten andere dies
+ebenfalls klonen, aber das ist nicht empfehlenswert.
+
+[log]
+
+Zeigt ein Commit-Log
+
+Zeigt ein Commit-Log.
+
+Per Default wird ein einzeiliges Format angezeigt, das die relative
+Zeit, den Autor, den Commit-Kommentar, und Baum-Referenzen anzeigt.
+
+Mit der Option ‚--all’ / ‚-a’ wird das Default-Format mit absoluter
+statt relativer Zeit verwendet, und der Commit-Hash mit angezeigt.
+
+Mit der Option ‚--graph’ / ‚-g’ wird ein Branch-Graph mit der Logausgabe
+verbunden.
+
+Die übrigen Optionen entsprechen vordefinierten Log-Formaten des Git
+Backends.
+
+Die Option ‚--reference’ / ‚-r’, ‚--short’ / ‚-s’, und ‚--medium’ / ‚-m’
+entsprechen den Optionen für ‚git log’ mit dem jeweiligen Namen.
+
+Die Option ‚--long’ / ‚-l’ entspricht ‚git log --full’.
+
+Die Option ‚--verbose’ / ‚-v’ entspricht ‚git log --fuller’.
+
+[merge]
+
+Führe Branches zusammen
+
+Führe Branches zusammen.
+
+[mkbranch]
+
+Erstellt einen neuen Branch
+
+Erstellt einen neuen Branch.
+
+[mv]
+
+Verschiebe Dateien
+
+Verschiebe Dateien.
+
+[push]
+
+Lokale Commits veröffentlichen
+
+Lokale Commits veröffentlichen.
+
+Veröffentliche commits können nicht weiter modifiziert werden,
+ohne auf Git-Backend-Befehle zuzugreifen und mögliche Probleme
+in Kauf zu nehmen.
+
+[revert]
+
+Macht lokale Änderung rückgängig
+
+Macht lokale Änderung rückgängig.
+
+[rm]
+
+Entferne Dateien aus der Versionskontrolle
+
+Entferne Dateien aus der Versionskontrolle.
+
+[rmbranch]
+
+Löscht einen lokalen Branch
+
+Löscht einen lokalen Branch.
+
+[stash]
+
+Zwischenspeicher für lokale Änderungen
+
+Zwischenspeicher für lokale Änderungen.
+
+Die folgenden Unterbefehle stehen zur Verfügung:
+
+ * push   -- Pushe lokale Änderungen auf den Stash.
+
+ * list   -- Zeige die Einträge auf dem Stash an.
+
+ * show   -- Inspiziere einen Eintrag auf dem Stash.
+
+ * drop   -- Entferne einen Eintrag vom Stash.
+
+ * clear  -- Entferne alle Einträge vom Stash.
+
+ * apply  -- Wende einen Eintrag vom Stash auf das Arbeitsverzeichnis an.
+
+ * pop    -- Wie ‚apply’, aber entfernt den Eintrag vom Stash wenn das Anwenden erfolgreich war.
+
+ * branch -- Wandle einen Eintrag vom Stash in einen neuen Branch um.
+
+[status]
+
+Zeige allgemeinen Status
+
+Zeige allgemeinen Status.
+
+Dies beinhaltet:
+
+Den Namen des aktuellen Branch, plus den Namen des entsprechenden
+Upstream-Branch und (falls eingestellt) des Push-Branch.
+
+Eine Liste Commits, die bereits vom Upstream-Branch bezogen aber
+noch nicht eingepflegt wurden, sofern vorhanden. (Siehe ‚gim help
+update’ für Einzelheiten.)
+
+Eine Liste lokaler Commits, die noch nicht veröffentlicht wurden,
+sofern vorhanden. (Siehe ‚gim help push’ für Einzelheiten.)
+
+Eine Liste gestashter Änderungen, sofern vorhanden. (Siehe ‚gim
+help stash’ für Einzelheiten.)
+
+Eine Liste nicht committeter Änderungen, sofern vorhanden. (Siehe
+‚gim help commit’ für Einzelheiten.)
+
+[switch]
+
+Wechselt den lokalen Branch
+
+Wechselt den lokalen Branch.
+
+[tag]
+
+Bringe Tags and Commits an
+
+Bringe Tags and Commits an.
+
+[uncommit]
+
+Letzten lokalen Commit rückgängig machen
+
+Letzten lokalen (nicht veröffentlichten) Commit rückgängig machen.
+
+Löscht den letzten lokalen Commit aus der Commit-Historie.
+
+Lokale Änderungen bleiben unangetastet.
+
+Standardmäßig fragt dies nach einer Bestätigung, unter Angabe des
+Commits den man im Begriff ist rückgängig zu machen und dem Commit
+auf den die Commit-Historie zurückgesetzt wird. Mit der ‚--yes’ /
+‚-y’ Option entfällt die Nachfrage.
+
+[update]
+
+Aktualisiere lokales Repository
+
+Aktualisiere lokales Repository und Arbeitsverzeichnis.
+
+Dies stashed alle lokalen Änderungen, übernimmt alle Änderungen,
+und wendet die Änderungne vom Stash erneut an.
+
+####################################################################
+# Topics
+
+[paging]
+
+Seiten blättern
+
+Gim leitet seine Ausgabe durch einen Pager, der das um- und zurückblättern
+ermöglichen soll.
+
+Voreingestellt ist hier ‚less‘. Sie können einen anderen Pager wählen,
+indem Sie die GIM_PAGER Umgebungsvariable setzen.
+
+Das ‚less’ Utility akzeptiert eine Vielzahl an Optionen, die dessen
+Verhalten kontrollieren. Diese Optionen können mit der Umgebungsvariable
+LESS global gesetzt werden. Ist diese Variable gesetzt, respektiert
+Gim dessen Einstellungen. Ist LESS nicht gesetzt, benutzt Gim die
+Optionen ‚--quit-if-one-screen’, ‚--quit-at-eof’, und ‚--RAW-CONTROL-CHARS’
+(‚-FeR’).
+
+[detached]
+
+Detached HEAD / Unbenannter Branch
+
+Normalerweise ist ‚HEAD’ eine symbolische Referenz auf den letzten
+Commit des aktuellen Branch. Wenn man allerdings mit ‚gim switch’
+eine frühere Revision ausgewählt hat, hat man ‚HEAD’ von allen bereits
+existierenden Branches abgetrennt („detached”).
+
+Wenn nun Änderungen an dieser früheren Revision vorgenommen und
+committed werden, wird damit ein neuer Branch basierend auf dieser
+Revision angelegt. Dieser Branch hat noch keinen Namen erhalten;
+Befehle wie ‚gim status’ werden statt dessen den gekürzten Hash der
+gewählten Revision als „Name” des aktuellen Branches anzeigen.
+
+Diese Umstände nennt man „detached HEAD” oder „unbenannter Branch”.
+
+Man kann entweder den Branch benennenn (TODO), oder ihn mit ‚gim
+switch’ aufgeben.
