@@ -1588,6 +1588,37 @@ tools, use either ‘--tools’ or ‘--tool-help’.
 }
 
 ###################################################################
+# 'fetch' changes from upstream repository
+package fetch
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        util::check_argv( -1, 0 );
+        $self->init();
+        util::execute( 'git fetch --all --quiet', rc => -1, output => -1 );
+        # TODO: status->run();
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'fetch' } =
+{
+    category => 'remote',
+    about => 'Fetch changes from upstream',
+    usage => q{gim fetch
+},
+    help => q{Fetch changes from upstream(s).
+
+No changes will be applied to your working copy yet.
+}};
+
+}
+
+###################################################################
 # 'help' covers user documentation.
 package help
 {
@@ -1815,6 +1846,86 @@ without an upstream repository.
 
 Others could clone a local repository if you make it accessible in
 some way, but this is not recommended.
+}};
+
+}
+
+###################################################################
+# 'update' local repository and working directory with incoming
+# changes.
+package update
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        $self->init();
+        util::check_argv( -1, 0 );
+        my $pager = util::pager();
+
+        # Are there unmerged commits in the first place?
+        if ( $self->{ 'repo_status' } != ::S_DETACHED )
+        {
+            ( $self->{ 'upstream' }, $self->{ 'push' } ) = git::upstream( $self->{ 'current_branch' } );
+
+            if ( defined( $self->{ 'upstream' } ) )
+            {
+                my $log = git::log( ( defined( $self->{ 'current_branch' } ) ? 'HEAD..' : '' ) . '@{upstream}' );
+
+                if ( $log->readline() )
+                {
+
+                    # Are there local changes that need to be stashed?
+                    my $changes = util::execute( 'git status --short', rc => -1, out => 1 );
+
+                    if ( $changes )
+                    {
+                        util::execute( "git stash --include-untracked --quiet --message \"‘gim update’ temporary\"", rc => -1, output => -1 );
+                    }
+
+                    # Do the actual merge
+                    util::execute( 'git rebase --quiet', rc => -1, output => -1 );
+
+                    # Unstash
+                    if ( $changes )
+                    {
+                        util::execute( 'git stash pop --quiet', rc => -1, output => -1 );
+                    }
+
+                    print( $pager util::text( 'Changes merged.' ) . "\n" );
+                }
+                else
+                {
+                    print( $pager util::text( 'No unmerged changes.' ) . "\n" );
+                }
+            }
+            else
+            {
+                print( $pager util::text( 'No upstream.' ) . "\n" );
+            }
+        }
+        else
+        {
+            print( $pager util::text( 'Repository in ‘detached HEAD’ state, cannot update.' ) . "\n" );
+        }
+
+        # TODO: status->run()
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'update' } =
+{
+    category => 'local',
+    about => 'Update local repository',
+    usage => q{gim update
+},
+    help => q{Update local repository and working directory.
+
+This stashes any local changes, applies incoming commits, and then
+reapplies the stash.
 }};
 
 }
