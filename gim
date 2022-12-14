@@ -6,6 +6,7 @@ use utf8;
 use open( ':std', ':encoding(UTF-8)' );
 
 use Getopt::Long     qw( :config posix_default permute pass_through );
+use Text::Wrap;
 
 ###################################################################
 ###################################################################
@@ -55,6 +56,25 @@ my $_ERROR_COL    = $_RED;
 my $_WARN_COL     = $_YELLOW;
 
 ###################################################################
+# Globals
+my %_category =  # Command categories
+(
+    'info'    => { sortorder => 0, about => 'Obtaining information' },
+    'local'   => { sortorder => 1, about => 'Act on your local repository' },
+    'remote'  => { sortorder => 2, about => 'Act on a remote repository' }
+);
+my %_help;       # Help on [command] => category, about, usage, help
+my %_topic;      # Help on [topic] => sortorder, about, help
+
+###################################################################
+# Reusable Regexes
+{
+    no warnings qw( qw );
+    use constant RE_QUOTED_STRING => qw( '((?:\\\\?.)*?)' );
+    use constant RE_COMMENT => qw( (\\s*(?:#.*)?) );
+}
+
+###################################################################
 ###################################################################
 # 'dbg' provides call stack trace / log message functionality.
 # With 'gim ... --debug', trace log is written to terminal. With
@@ -81,7 +101,7 @@ package dbg
             # Logging to file
             if ( ! open( $_dbg, '>', $_[1] ) )
             {
-                $_dbg = *STDOUT;
+                $_dbg = util::pager();
                 print( $_dbg util::text( 'Warning: Could not open debug output file ‘[_1]’.', $_[1] ) );
             }
             else
@@ -92,7 +112,7 @@ package dbg
         }
         else
         {
-            $_dbg = *STDOUT;
+            $_dbg = util::pager();
 
             if ( ! -t STDOUT )
             {
@@ -169,12 +189,14 @@ package util
 
         if ( @ARGV < $_[0] )
         {
-            util::throw( ::E_ARGUMENTS, util::text( 'Error: Too few arguments.' ) );
+            util::throw( ::E_ARGUMENTS, util::text( 'Error: Too few arguments.' ) .
+                                        util::text( 'Try ‘[_1]’.', 'gim help ' . caller(0) ) );
         }
 
         if ( ( $_[1] > -1 ) && ( @ARGV > $_[1] ) )
         {
-            util::throw( ::E_ARGUMENTS, util::text( 'Error: Too many arguments.' ) );
+            util::throw( ::E_ARGUMENTS, util::text( 'Error: Too many arguments.' ) .
+                                        util::text( 'Try ‘[_1]’.', 'gim help ' . caller(0) ) );
         }
 
         dbg::leave();
@@ -186,6 +208,7 @@ package util
     sub check_files( @ )
     {
         dbg::enter();
+        my $pager = util::pager();
 
         foreach ( @_ )
         {
@@ -198,7 +221,7 @@ package util
 
             if ( -l $_ )
             {
-                print( util::text( 'Warning: ‘[_1]’ is a symbolic link, which is not portable.', $_ ) );
+                print( $pager util::text( 'Warning: ‘[_1]’ is a symbolic link, which is not portable.', $_ ) );
             }
         }
 
@@ -216,6 +239,7 @@ package util
     sub check_filespecs( $@ )
     {
         dbg::enter();
+        my $pager = util::pager();
         my $func = shift( @_ );
 
         foreach ( @_ )
@@ -257,7 +281,7 @@ package util
 
             if ( -l $filespec )
             {
-                print( util::text( 'Warning: ‘[_1]’ is a symbolic link, which is not portable.', $_ ) );
+                print( $pager util::text( 'Warning: ‘[_1]’ is a symbolic link, which is not portable.', $filespec ) );
             }
         }
 
@@ -362,6 +386,60 @@ package util
         }
     }
 
+    my $_pager;
+
+    # Acquire a handle to the output pager process. There will be
+    # only one pager process, even if this subroutine is called
+    # multiple times.
+    # If output is not to a terminal (e.g. redirected into a file)
+    # then the pager will be 'cat' (i.e., pass-through).
+    # If the environment variable GIM_PAGER is set, that will be
+    # the pager used.
+    # The default pager is 'less'. If the LESS environment variable
+    # is set, it will be used; else the '-FeRS' options will be set.
+    # Note that Git's core.pager is NOT honored.
+    sub pager()
+    {
+        dbg::enter();
+
+        if ( ! defined( $_pager ) )
+        {
+            my $cmd;
+            $Text::Wrap::columns = ( `tput cols` || 76 ) - 2;
+
+            if ( -t STDOUT )
+            {
+                if ( exists( $ENV{ GIM_PAGER } ) )
+                {
+                    $cmd = $ENV{ GIM_PAGER };
+                }
+                else
+                {
+                    if ( exists( $ENV{ LESS } ) )
+                    {
+                        $cmd = 'less';
+                    }
+                    else
+                    {
+                        $cmd = 'less -FeRS';
+                    }
+                }
+            }
+            else
+            {
+                $cmd = 'cat';
+            }
+
+            if ( ! open( $_pager, "| $cmd" ) )
+            {
+                util::throw( ::E_EXECUTE_FAIL, util::text( 'Error: Failed to execute ‘[_1]’.', $cmd ) );
+            }
+        }
+
+        dbg::leave();
+        return $_pager;
+    }
+
     # This function quotes its arguments
     sub qtd( @ )
     {
@@ -384,6 +462,11 @@ package util
 
         dbg::leave();
         return @new;
+    }
+
+    sub separator()
+    {
+        return ( '-' x $Text::Wrap::columns ) . "\n";
     }
 
     # Pull subcommand from @ARGV.
@@ -474,6 +557,16 @@ package util
         $! = $_[0];
         die( $_[1] );
     }
+
+    END
+    {
+        dbg::msg( 'util::END' );
+
+        if ( defined( $_pager ) )
+        {
+            close( $_pager );
+        }
+    }
 }
 
 ###################################################################
@@ -510,6 +603,7 @@ package executor
             util::throw( ::E_EXECUTE_FAIL, util::text( 'Error: Failed to execute ‘[_1]’.', $self->{ command } ) . $! . "\n" );
         }
 
+        util::pager()->autoflush( 1 );
         $self->{ 'linecount' } = 0;
 
         dbg::leave();
@@ -657,7 +751,7 @@ package devel
         {
             dbg::enter();
             my $self = shift( @_ );
-            util::check_argv( -1, 0 );
+            my $pager = util::pager();
             my ( $rc, $output );
 
             # preparing test executable
@@ -690,7 +784,7 @@ package devel
             print( $fh $testexe );
             close( $fh );
             chmod( 0755, 'testexe' );
-            print( "Running self-tests:\n" );
+            print( $pager "Running self-tests:\n" );
 
             # util::execute()
             my $expected = "stdout1\nstdout2\nstdout3\nstderr1\nstdout4\nstdout5\nstdout6";
@@ -748,11 +842,221 @@ package devel
 
             # Clean up
             unlink( 'testexe' );
-            print( "Done.\n" );
+            print( $pager "Done.\n" );
             dbg::leave();
         }
     }
+
+$_help{ 'devel' } =
+{
+    category => 'local',
+    about => 'Maintainer features',
+    usage => q{gim devel <subcommand>
+},
+    help => q{Various features for maintainers of gim.
+
+Available subcommands are:
+
+ * qtd      --  testing function for util::qtd
+
+ * test     --  runs a number of regression tests
+}};
+
 }
+
+###################################################################
+# 'help' covers user documentation.
+package help
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        # 'help', 'help <cmd>', 'help topic <topic>'
+        util::check_argv( 0, 2 );
+
+        if ( @ARGV == 0 )
+        {
+            # 'help' -- basic self-documentation
+            $self->_help();
+        }
+        else
+        {
+            my $cmd = shift( @ARGV );
+
+            if ( $cmd ne 'topic' )
+            {
+                # 'help <subcommand>' -- subcommand documentation
+                $self->_help_cmd( $cmd );
+            }
+            else
+            {
+                # 'help topic [<topic>]' -- general documentation
+                $self->_help_topic();
+            }
+        }
+
+        dbg::leave();
+        return ::E_OK;
+    }
+
+    # 'help' prints a summary on subcommands on which help is available.
+    sub _help()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        my $pager = util::pager();
+        print( $pager '  ' . util::text( 'Usage:' ) .
+                      "    gim help <subcommand>\n\n" .
+                      '  ' . util::text( 'Available subcommands:' ) .
+                      "\n"
+        );
+
+        # List the subcommands under each %_category in their sort order
+        foreach my $category ( sort { $_category{ $a }{ sortorder } <=> $_category{ $b }{ sortorder } } keys %_category )
+        {
+            print( $pager '  ' . util::text( $_category{ $category }{ about } ) );
+
+            # The subcommands under each category are sorted alphabetically
+            foreach my $subcommand ( sort keys %_help )
+            {
+                if ( ! $_help{ $subcommand }{ category } )
+                {
+                    util::throw( ::E_INTERNAL, "Error: Subcommand without category: $subcommand\n" );
+                }
+
+                # Print only subcommands of the current category
+                if ( $_help{ $subcommand }{ category } ne $category )
+                {
+                    next;
+                }
+
+                printf( $pager "    gim %-19s %s\n", $subcommand, $_help{ $subcommand }{ about } );
+            }
+
+            print( $pager "\n" );
+        }
+
+        print( $pager '  ' . util::text( 'Additional help on Gim topics:' ) .
+                      '    gim help topic [<topic>]' .
+                      "\n"
+        );
+
+        dbg::leave();
+    }
+
+    # 'help <subcommand>' prints the help on a specific subcommand
+    sub _help_cmd( $ )
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        util::check_argv( -1, 0 );
+
+        if ( ! defined( $_help{ $_[0] }{ help } ) )
+        {
+            util::throw( ::E_SUB_UNKNOWN, util::text( 'Error: Unknown subcommand ‘[_1]’.', $_[0] ) .
+                                          util::text( 'Try ‘[_1]’.', 'gim help' )
+            );
+        }
+
+        my $pager = util::pager();
+        print( $pager '  ' . util::text( 'Usage:' ) .
+                      '    ' . $_help{ $_[0] }{ usage } .
+                      "\n"
+        );
+
+        print( $pager Text::Wrap::fill( '  ', '  ', $_help{ $_[0] }{ help } ) );
+        dbg::leave();
+    }
+
+    # 'help topic [<topic>]' prints help on general topics.
+    sub _help_topic()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+
+        if ( @ARGV == 0 )
+        {
+            # Overview on topics
+            my $pager = util::pager();
+            print( $pager '  ' . util::text( 'Usage:' ) .
+                          "    gim help topic <topic>\n\n" .
+                          '  ' . util::text( 'Available topics:' )
+            );
+
+            foreach my $topic ( sort { $_topic{ $a }{ sortorder } <=> $_topic{ $b }{ sortorder } } keys %_topic )
+            {
+                printf( $pager "    %-23s %s\n", $topic, $_topic{ $topic }{ about } );
+            }
+        }
+        else
+        {
+            # Help on a specific topic
+            my $topic = shift( @ARGV );
+            util::check_argv( -1, 0 );
+
+            if ( ! $_topic{ $topic }{ help } )
+            {
+                util::throw( ::E_SUB_UNKNOWN, util::text( 'Error: Unknown topic ‘[_1]’.', $topic ) .
+                                              util::text( 'Try ‘[_1]’.', 'gim help topic' )
+                );
+            }
+
+            my $pager = util::pager();
+            print( $pager '  ' .
+                          $_topic{ $topic }{ about } .
+                          "\n\n" .
+                          Text::Wrap::fill( '  ', '  ', $_topic{ $topic }{ help } )
+            );
+        }
+
+        dbg::leave();
+    }
+
+$_help{ help } =
+{
+    category => 'info',
+    about => 'This help summary',
+    usage => q{gim [help|--help]
+    gim help <subcommand>
+    gim <subcommand> --help
+    gim help topic <topic>
+},
+    help => q{Gim comes with its own help functionality. Ideally,
+this is all you should ever need.
+
+Use ‘gim help’ to get an overview of the available subcommands, and
+‘gim help <subcommand>’ to get the help on a specific subcommand.
+
+There are also general help topics available. You get a list of
+these with ‘gim help topic’, and display a specific topic with ‘gim
+help topic <topic>’.
+}};
+
+}
+
+###################################################################
+###################################################################
+$_topic{ paging } =
+{
+    sortorder => 0,
+    about => q{Gim Output Paging},
+    help => q{Gim passes its output through a pager, so that output
+stops each time the screen is filled up, waiting for you to press a
+key to continue.
+
+The default pager used is ‘less’. You can override the pager used
+by setting the GIM_PAGER environment variable.
+
+The ‘less’ utility accepts a number of options controlling its
+behavior. These options can be set globally by setting the LESS
+environment variable. If this variable is set, Gim respects its
+setting. If LESS is not set, Gim will use ‘--quit-if-one-screen’,
+‘--quit-at-eof’, ‘--RAW-CONTROL-CHARS’, and ‘--chop-long-lines’
+(‘-FeRS’).
+}};
 
 ###################################################################
 ###################################################################
@@ -761,7 +1065,8 @@ package gim;
 print( $_RESET );
 my $command;
 Getopt::Long::GetOptions(
-    'debug:s' => \&dbg::init
+    'debug:s' => \&dbg::init,
+    'help|h' => sub { $command = help->new(); }
 );
 
 $command = util::subcommand() unless ( $command );
