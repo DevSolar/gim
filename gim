@@ -2483,6 +2483,35 @@ The ‘--verbose’ / ‘-v’ option corresponds to ‘git log --fuller’.
 }
 
 ###################################################################
+# 'merge' branches
+package merge
+{
+    our @ISA = 'branchworker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        util::check_argv( 1, -1 );
+        $self->init();
+        my @args = util::qtd( @ARGV );
+        util::execute( "git merge @args", rc => -1 );
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'merge' } =
+{
+    category => 'local',
+    about => 'Merge branches',
+    usage => q{gim merge ...
+},
+    help => q{Merge branches.
+}};
+
+}
+
+###################################################################
 # 'mkbranch' creates a new branch
 package mkbranch
 {
