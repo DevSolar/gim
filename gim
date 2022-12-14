@@ -1968,6 +1968,38 @@ some way, but this is not recommended.
 }
 
 ###################################################################
+# 'push' publishes your local commits
+package push
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        util::check_argv( -1, 0 );
+        util::execute( 'git push --quiet', rc => -1, output => -1 );
+        $self->init();
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'push' } =
+{
+    category => 'remote',
+    about => 'Publish local commits',
+    usage => q{gim push
+},
+    help => q{Publish local commits.
+
+Note that this means you cannot modify those commits any longer
+(without resorting to Git backend commands directly and running
+into potential problems).
+}};
+
+}
+
+###################################################################
 # 'status' gives information about the repository's current state
 package status
 {
