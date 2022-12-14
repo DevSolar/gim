@@ -988,6 +988,47 @@ package worker
 }
 
 ###################################################################
+# 'add' files to version control
+package add
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        $self->init();
+        util::check_argv( 1, -1 );
+        util::check_filespecs( ::E_NOTFILEORDIR, @ARGV );
+        my @args = util::qtd( @ARGV );
+        # '--intent-to-add' in combination with 'commit --all'
+        # effectively removes staging from the workflow.
+        # '--no-all' avoids filesystem deletions resulting in
+        # removal from version control, which was considered
+        # surprising (a.k.a. 'bad').
+        util::execute( "git add --intent-to-add --no-all -- @args", rc => -1 );
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'add' } =
+{
+    category => 'local',
+    about => 'Add files to version control',
+    usage => q{gim add <filespec> [<filespec> ...]
+},
+    help => q{Add files to version control.
+
+Actually this just earmarks the files, which will be added to your
+local repository with the next commit.
+
+Directories specified as arguments will be added including their
+contents, recursively.
+}};
+
+}
+
+###################################################################
 # 'devel' covers everything for internal Gim development. None of
 # this should ever be needed by the casual Gim user.
 package devel
