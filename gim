@@ -5,6 +5,8 @@ use warnings;
 use utf8;
 use open( ':std', ':encoding(UTF-8)' );
 
+use Getopt::Long     qw( :config posix_default permute pass_through );
+
 ###################################################################
 ###################################################################
 # Exit Codes
@@ -14,6 +16,11 @@ use constant E_SUB_UNKNOWN   =>  2;  # Subcommand unknown
 use constant E_EXECUTE_FAIL  =>  3;  # Execution failure
 use constant E_SIG_INTERRUPT =>  4;  # Interrupted by signal
 use constant E_UNEXPECTED    =>  5;  # Unexpected backend error
+use constant E_ARGUMENTS     =>  6;  # Wrong number of arguments
+use constant E_NOTFILE       =>  7;  # Not a regular file
+use constant E_NOTFILEORDIR  =>  8;  # Not a regular file or directory
+use constant E_NOTTRACKED    =>  9;  # Not a file under version control
+
 ###################################################################
 # Colors
 
@@ -47,12 +54,114 @@ my $_WARN_COL     = $_YELLOW;
 
 ###################################################################
 ###################################################################
+# 'dbg' provides call stack trace / log message functionality.
+# With 'gim ... --debug', trace log is written to terminal. With
+# 'gim ... --debug <filename>', trace log is written to file.
+# Note that '--debug [<filename>]' needs to be at the end of the
+# command line due to the way argument parsing works.
+package dbg
+{
+    my $_dbg;
+    our $_indent = 0;
+    # NOT setting these with the other colors at the top of the
+    # script, as debug coloring depends on whether *debug* goes to
+    # terminal or file, not the general output.
+    my $_dbg_color = ::MAGENTA;
+    my $_dbg_clear = ::CLEAR;
+
+    # Called from main's GetOptions, with an optional log filename
+    # as second argument. (First argument of the function is always
+    # 'debug'.) Initializes the debug file handle $_dbg.
+    sub init( $;$ )
+    {
+        if ( length( $_[1] ) )
+        {
+            # Logging to file
+            if ( ! open( $_dbg, '>', $_[1] ) )
+            {
+                $_dbg = *STDOUT;
+                print( $_dbg util::text( 'Warning: Could not open debug output file ‘[_1]’.', $_[1] ) );
+            }
+            else
+            {
+                $_dbg_color = '';
+                $_dbg_clear = '';
+            }
+        }
+        else
+        {
+            $_dbg = *STDOUT;
+
+            if ( ! -t STDOUT )
+            {
+                $_dbg_color = '';
+                $_dbg_clear = '';
+            }
+        }
+    }
+
+    # Called upon subroutine entry. Prints stack trace entry and
+    # increases indentation of subsequent entries.
+    sub enter()
+    {
+        if ( defined( $_dbg ) )
+        {
+            package DB;
+            print( $_dbg ( ' ' x $_indent ) . $_dbg_color . '>> ' . (caller(1))[3] . '(' );
+
+            if ( (caller(1))[4] )
+            {
+                print( $_dbg ' ' . join( ', ', map { defined ? qq("$_") : '<undef>' } @DB::args ) . ' ' );
+            }
+
+            print( $_dbg ")$_dbg_clear\n" );
+            $_indent += 3;
+        }
+    }
+
+    # Print a log entry at current indentation.
+    sub msg( $ )
+    {
+        if ( defined( $_dbg ) )
+        {
+            for ( split( "\n", $_[0] ) )
+            {
+                print( $_dbg ( ' ' x $_indent ) . $_dbg_color . $_ . $_dbg_clear . "\n" );
+            }
+        }
+    }
+
+    # Called before subroutine exit. Prints stack trace entry and
+    # decreases indentation of subsequent entries.
+    sub leave()
+    {
+        if ( defined( $_dbg ) )
+        {
+            $_indent -= 3;
+            print( $_dbg ( ' ' x $_indent ) . $_dbg_color . '<< ' . (caller(1))[3] . $_dbg_clear . "\n" );
+        }
+    }
+
+    # Close the debug file handle before exit.
+    END
+    {
+        if ( defined( $_dbg ) && fileno( $_dbg ) )
+        {
+            dbg::msg( 'dbg::END' );
+            close( $_dbg );
+        }
+    }
+}
+
+###################################################################
+###################################################################
 # 'util' covers any utility subroutines.
 package util
 {
     # Check return code from external calls
     sub check_rc( $$ )
     {
+        dbg::enter();
         my ( $rc, $command ) = @_;
 
         # Mapping of signal numbers to signal names for error messages
@@ -93,6 +202,7 @@ package util
             }
         }
 
+        dbg::leave();
         return $rc;
     }
 
@@ -105,6 +215,7 @@ package util
     # out =>  1: Return the command's output
     sub execute( $;@ )
     {
+        dbg::enter();
         my $command = shift @_;
         my %options = ( rc => 1, out => 0, @_ );
         my $output = '';
@@ -113,6 +224,7 @@ package util
         {
             $output = `$command 2>&1`;
             chomp( $output );
+            dbg::msg( "$output" );
         }
         else
         {
@@ -127,6 +239,8 @@ package util
                                          util::text( '‘[_1]’ returned ‘[_2]’:', $command, $rc ) .
                                          $output . "\n" );
         }
+
+        dbg::leave();
 
         if ( ( $options{ rc } == 1 ) && ( $options{ out } == 1 ) )
         {
@@ -149,6 +263,7 @@ package util
     # subroutine of that name, and returns that subroutine name.
     sub subcommand()
     {
+        dbg::enter();
         my $subcommand = shift( @ARGV );
         my $caller = caller(0);
         my $help_hint;
@@ -183,6 +298,7 @@ package util
             util::throw( ::E_SUB_UNKNOWN, util::text( 'Error: Unknown subcommand ‘[_1]’.', $subcommand ) );
         }
 
+        dbg::leave();
         return $rc;
     }
 
@@ -194,6 +310,7 @@ package util
     #    _WARN_COL.
     sub text( $;@ )
     {
+        dbg::enter();
         my $text = $_[0];
 
         # Replace '[_n]' with argument #n.
@@ -214,6 +331,7 @@ package util
             $text =~ s/:/:$_RESET/;
         }
 
+        dbg::leave();
         return $text . "\n";
     }
 
@@ -221,8 +339,10 @@ package util
     # the exception message.
     sub throw( @ )
     {
+        my $msg = ( '<' x $dbg::_indent );
+        $dbg::_indent = 0;
         $! = $_[0];
-        die( $_[1] . "\n" );
+        die( $_[1] );
     }
 }
 
@@ -241,6 +361,7 @@ package executor
     # Requires the command to be executed as parameter.
     sub new( $ )
     {
+        dbg::enter();
         use IPC::Open3;
         my $class = shift( @_ );
         my $self = {};
@@ -253,18 +374,22 @@ package executor
 
         if ( $@ )
         {
+            dbg::msg( 'Exception thrown by open3()' );
+            dbg::msg( $@ );
             $self->{ pid } = 0;
             util::throw( ::E_EXECUTE_FAIL, util::text( 'Error: Failed to execute ‘[_1]’.', $self->{ command } ) . $! . "\n" );
         }
 
         $self->{ 'linecount' } = 0;
 
+        dbg::leave();
         return $self;
     }
 
     # Writes a line of output to $_.
     sub readline()
     {
+        dbg::enter();
         my $self = shift( @_ );
         my $fh = $self->{ out };
 
@@ -273,6 +398,7 @@ package executor
             ++$self->{ 'linecount' };
         }
 
+        dbg::leave();
         return $_;
     }
 
@@ -280,6 +406,7 @@ package executor
     # This is optional, as the destructor will do it anyway.
     sub close()
     {
+        dbg::enter();
         my $self = shift( @_ );
 
         if ( $self->{ pid } ne 0 )
@@ -287,16 +414,26 @@ package executor
             my $fh = $self->{ err };
             $self->{ errors } = do { local $/; <$fh> };
 
+            if ( length( $self->{ errors } ) > 0 )
+            {
+                dbg::msg( "Output on stderr: $self->{ errors }" );
+            }
+
+            dbg::msg( "waiting for $self->{ pid }" );
             waitpid( $self->{ pid }, 0 );
             $self->{ pid } = 0;
             $self->{ rc } = util::check_rc( $?, $self->{ command } );
         }
+
+        dbg::leave();
     }
 
     sub DESTROY
     {
+        dbg::enter();
         my $self = shift;
         $self->close();
+        dbg::leave();
     }
 }
 
@@ -307,9 +444,11 @@ package worker
 {
     sub new()
     {
+        dbg::enter();
         my $class = shift( @_ );
         my $self = {};
         bless( $self, $class );
+        dbg::leave();
         return $self;
     }
 }
@@ -323,16 +462,19 @@ package devel
 
     sub run()
     {
+        dbg::enter();
         my $self = shift( @_ );
         util::check_argv( 1, 1 );
         my $subcommand = util::subcommand();
         $subcommand->run();
+        dbg::leave();
         return ::E_OK;
     }
 
     # 'devel test' runs a list of regression tests.
     package devel::test
     {
+        dbg::enter();
         my $self = shift( @_ );
         my ( $rc, $output );
 
@@ -413,6 +555,7 @@ package devel
         # Clean up
         unlink( 'testexe' );
         print( "Done.\n" );
+        dbg::leave();
     }
 }
 
@@ -421,6 +564,10 @@ package devel
 package gim;
 
 print( $_RESET );
+my $command;
+Getopt::Long::GetOptions(
+    'debug:s' => \&dbg::init
+);
 
-my $command = util::subcommand();
+$command = util::subcommand() unless ( $command );
 $command->run();
