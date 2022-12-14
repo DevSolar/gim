@@ -252,6 +252,108 @@ package worker
 }
 
 ###################################################################
+# 'devel' covers everything for internal Gim development. None of
+# this should ever be needed by the casual Gim user.
+package devel
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        my $self = shift( @_ );
+        util::check_argv( 1, 1 );
+        my $subcommand = util::subcommand();
+        $subcommand->run();
+        return ::E_OK;
+    }
+
+    # 'devel test' runs a list of regression tests.
+    package devel::test
+    {
+        my $self = shift( @_ );
+        my ( $rc, $output );
+
+        # preparing test executable
+        ( my $testexe = q{#!/usr/bin/env bash
+
+        o=1
+        e=1
+
+        for arg in "$@"
+        do
+            case $arg in
+                o)
+                    echo "stdout$o"
+                    o=$(($o + 1))
+                    ;;
+                e)
+                    echo "stderr$e" >&2
+                    e=$(($e + 1))
+                    ;;
+                [0-9])
+                    exit $arg
+                    ;;
+                s)
+                    kill -s SIGINT $$
+                    ;;
+            esac
+        done
+        }) =~ s/^ {8}//mg;
+        open( my $fh, '>', 'testexe' ) || die( "Error: Could not open 'testexe' for writing.\n" . $! );
+        print( $fh $testexe );
+        close( $fh );
+        chmod( 0755, 'testexe' );
+        print( "Running self-tests:\n" );
+
+        # util::execute()
+        my $expected = "stdout1\nstdout2\nstdout3\nstderr1\nstdout4\nstdout5\nstdout6";
+        eval { util::execute( 'nosuchcommand' ); }; die unless ( $@ =~ /.*Error:.* Failed to execute ‘nosuchcommand’\.\nCommand not found\./ );
+        $rc = util::execute( './testexe o o o e o o o 0' ); die unless ( $rc == 0 );
+        $rc = util::execute( './testexe o o o e o o o 1' ); die unless ( $rc == 1 );
+        eval { util::execute( './testexe o o o e o o o s' ); }; die unless ( $@ =~ /.*Error:.* ‘\.\/testexe o o o e o o o s’ interrupted by signal.*/ );
+        $rc = util::execute( './testexe o o o e o o o 0', rc => 0 ); die unless ( $rc == 0 );
+        $rc = util::execute( './testexe o o o e o o o 1', rc => 0 ); die unless ( $rc == 1 );
+        eval { util::execute( './testexe o o o e o o o s', rc => 0 ); }; die unless ( $@ =~ /.*Error:.* ‘\.\/testexe o o o e o o o s’ interrupted by signal.*/ );
+        $rc = util::execute( './testexe o o o e o o o 0', rc => -1 ); die unless ( $rc == 0 );
+        eval { util::execute( './testexe o o o e o o o 1', rc => -1 ); }; die unless ( $@ =~ /.*Error:.* Failed to execute ‘devel’\.\n.*‘\.\/testexe o o o e o o o 1’ returned ‘1’:\n$expected/ );
+        eval { util::execute( './testexe o o o e o o o s', rc => -1 ); }; die unless ( $@ =~ /.*Error:.* ‘\.\/testexe o o o e o o o s’ interrupted by signal.*/ );
+        ( $rc, $output ) = util::execute( './testexe 0', out => 1 ); die unless ( ( $rc == 0 ) && ( $output eq '' ) );
+        ( $rc, $output ) = util::execute( './testexe 1', out => 1 ); die unless ( ( $rc == 1 ) && ( $output eq '' ) );
+        ( $rc, $output ) = util::execute( './testexe o o o e o o o 0', out => 1 ); die unless ( $rc == 0 && $output eq $expected );
+        ( $rc, $output ) = util::execute( './testexe o o o e o o o 1', out => 1 ); die unless ( $rc == 1 && $output eq $expected );
+        eval { util::execute( './testexe o o o e o o o s', out => 1 ); }; die unless ( $@ =~ /.*Error:.* ‘\.\/testexe o o o e o o o s’ interrupted by signal.*/ );
+
+        # executor
+        my $exe;
+        eval { $exe = new executor( 'nosuchcommand' ); }; die unless ( $@ =~ /.*Error:.* Failed to execute ‘nosuchcommand’\./ );
+        $exe = new executor( './testexe o o o e o o o 0' );
+        $rc = 1;
+        while ( $exe->readline() )
+        {
+            chomp;
+            die unless ( $_ eq "stdout$rc" );
+            ++$rc;
+        }
+        $exe->close();
+        die unless ( $exe->{ linecount } == 6 );
+        die unless ( $exe->{ errors } eq "stderr1\n" );
+        die unless ( $exe->{ rc } == 0 );
+        $exe = new executor( './testexe o o o e o o o 1' ); $exe->close(); die unless ( $exe->{ rc } == 1 );
+        $exe = new executor( './testexe o o o e o o o s' ); eval { $exe->close(); }; die unless ( $@ =~ /.*Error:.* ‘\.\/testexe o o o e o o o s’ interrupted by signal.*/ );
+
+        # util::subcommand()
+        ( util::execute( "$0" ) == ::E_SUB_MISSING ) || die;
+        ( util::execute( "$0 foo" ) == ::E_SUB_UNKNOWN ) || die;
+        ( util::execute( "$0 worker" ) == ::E_SUB_UNKNOWN ) || die;
+        ( util::execute( "$0 devel" ) == ::E_SUB_MISSING ) || die;
+
+        # Clean up
+        unlink( 'testexe' );
+        print( "Done.\n" );
+    }
+}
+
+###################################################################
 ###################################################################
 package gim;
 
