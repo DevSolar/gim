@@ -1031,6 +1031,37 @@ contents, recursively.
 }
 
 ###################################################################
+# 'clone' a repository
+package clone
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        util::check_argv( 1, 2 );
+        my @args = util::qtd( @ARGV );
+        util::execute( "git clone --quiet --no-local -- @args", rc => -1, output => -1 );
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'clone' } =
+{
+    category => 'local',
+    about => 'Clone a repository',
+    usage => q{gim clone <upstream> [<local>]
+},
+    help => q{Clone a repository.
+
+Create a new local repository and working copy as clone of an
+upstream repository.
+}};
+
+}
+
+###################################################################
 # 'commit' changes in the working directory to local repository.
 package commit
 {
