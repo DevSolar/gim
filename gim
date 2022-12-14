@@ -57,6 +57,7 @@ my $_WARN_COL     = $_YELLOW;
 
 ###################################################################
 # Globals
+my %_catalog;    # Localized output texts -- [key] => text
 my %_category =  # Command categories
 (
     'info'    => { sortorder => 0, about => 'Obtaining information' },
@@ -72,6 +73,16 @@ my %_topic;      # Help on [topic] => sortorder, about, help
     no warnings qw( qw );
     use constant RE_QUOTED_STRING => qw( '((?:\\\\?.)*?)' );
     use constant RE_COMMENT => qw( (\\s*(?:#.*)?) );
+}
+
+###################################################################
+# General configuration
+{
+    use File::Basename qw( dirname );
+
+    # Location of catalog files. For the time being uses gim's
+    # own directory (so this works out of a repository).
+    use constant CATALOG_DIR => dirname( __FILE__ ) . '/catalogs';
 }
 
 ###################################################################
@@ -177,6 +188,197 @@ package dbg
 
 ###################################################################
 ###################################################################
+# 'l10n' loads a catalog file into the various data structures.
+package l10n
+{
+    use I18N::LangTags qw( implicate_supers );
+    use I18N::LangTags::Detect;
+
+    # Load localizations from catalog file
+    sub init()
+    {
+        dbg::enter();
+
+        # Taking configured locale, and checking it and its supers
+        # (de-de -> de) for existing catalog file.
+        foreach ( implicate_supers( I18N::LangTags::Detect::detect() ) )
+        {
+            my $locale = $_;
+            my $catalogfile = "${\::CATALOG_DIR}/$locale.catalog";
+            dbg::msg( "Checking for ‘$catalogfile’" );
+
+            if ( open( my $catalog, '<', $catalogfile ) )
+            {
+                # Reading file and passing to parse functions
+                dbg::msg( "Reading ‘$locale.catalog’" );
+                my $section = '';
+                my @input = ();
+
+                while ( <$catalog> )
+                {
+                    chomp;
+
+                    if ( m/^\s*#/ )
+                    {
+                        # Skip comment lines
+                        next;
+                    }
+                    elsif ( m/^\s*\[.*\]/ )
+                    {
+                        # Section header
+
+                        # If the command is not 'gim help ...', we
+                        # do not need to parse all the sections.
+                        if ( ( ! defined( $ARGV[0] ) ) || ( $ARGV[0] ne 'help' ) )
+                        {
+                            last;
+                        }
+
+                        # Parse the last section
+                        _parse( $section, \@input );
+
+                        # Reset to new section
+                        ( $section ) = m/^\s*\[(.*)\]/;
+                        @input = ();
+                    }
+                    else
+                    {
+                        # Standard line
+                        push( @input, $_ );
+                    }
+                }
+
+                # We will likely have an unparsed section here
+                if ( @input )
+                {
+                    _parse( $section, \@input );
+                }
+
+                close( $catalog );
+                # No need to look any further
+                last;
+            }
+
+            $locale = '';
+        }
+
+        dbg::leave();
+    }
+
+    # Parse array of inputs (second argument) into the %_catalog,
+    # %_help, or %_topic hashes as appropriate
+    sub _parse( $$ )
+    {
+        dbg::enter();
+
+        if ( $_[0] eq '' )
+        {
+            _parse_catalog( $_[1] );
+            dbg::leave();
+            return;
+        }
+
+        my $item;
+
+        # Cheking whether the [section] is a help item, a topic,
+        # or neither (an error)
+        if ( defined( $_help{ $_[0] } ) )
+        {
+            dbg::msg( "Parsing help for subcommand [$_[0]]" );
+            $item = \%{ $_help{ $_[0] } };
+        }
+        elsif ( defined( $_topic{ $_[0] } ) )
+        {
+            dbg::msg( "Parsing help topic [$_[0]]" );
+            $item = \%{ $_topic{ $_[0] } };
+        }
+        else
+        {
+            util::throw( ::E_INTERNAL, "Error: Unknown section [$_[0]] in catalog.\n" );
+        }
+
+        $item->{ about } = '';
+        $item->{ help } = '';
+
+        # Drop empty lines from the beginning
+        while( @{$_[1]}[0] eq '' )
+        {
+            shift( @{$_[1]} );
+        }
+
+        # Drop empty lines from the end
+        while( @{$_[1]}[-1] eq '' )
+        {
+            pop( @{$_[1]} );
+        }
+
+        foreach ( @{$_[1]} )
+        {
+            chomp;
+
+            if ( $item->{ about } eq '' )
+            {
+                # First line -- 'about' summary
+                $item->{ about } = $_;
+            }
+            elsif ( $item->{ help } eq '' )
+            {
+                # This skips empty lines between summary and body
+                $item->{ help } = $_;
+            }
+            else
+            {
+                # Empty lines mark a paragraph
+                if ( $_ eq '' )
+                {
+                    $item->{ help } .= "\n\n";
+                }
+                else
+                {
+                    $item->{ help } .= ' ' . $_;
+                }
+            }
+        }
+
+        chomp( $item->{ help } );
+        dbg::leave();
+    }
+
+    # Parse array of inputs of main catalog into the %_catalog hash
+    sub _parse_catalog( $ )
+    {
+        dbg::enter();
+
+        foreach( @{$_[0]} )
+        {
+            chomp;
+
+            if ( m/^\s*$/ )
+            {
+                # Skip empty lines
+                next;
+            }
+
+            # 'Key phrase' => 'Localized phrase' # Comment
+            my ( $key, $value, $rest ) = m/^\s*${\::RE_QUOTED_STRING}\s*=>\s*${\::RE_QUOTED_STRING}${\::RE_COMMENT}$/;
+
+            if ( defined( $rest ) )
+            {
+                # Success
+                $_catalog{ $key } = $value;
+            }
+            else
+            {
+                util::throw( ::E_INTERNAL, "Error: Malformed line in catalog.\n  => $_\n" );
+            }
+        }
+
+        dbg::leave();
+    }
+}
+
+###################################################################
+###################################################################
 # 'util' covers any utility subroutines.
 package util
 {
@@ -197,32 +399,6 @@ package util
         {
             util::throw( ::E_ARGUMENTS, util::text( 'Error: Too many arguments.' ) .
                                         util::text( 'Try ‘[_1]’.', 'gim help ' . caller(0) ) );
-        }
-
-        dbg::leave();
-    }
-
-    # Throws if one of the arguments does not refer to a file.
-    # Generates warnings for symbolic links, which are not portable
-    # across platforms.
-    sub check_files( @ )
-    {
-        dbg::enter();
-        my $pager = util::pager();
-
-        foreach ( @_ )
-        {
-            dbg::msg( "checking ‘$_’" );
-
-            if ( ! -f $_ )
-            {
-                util::throw( ::E_NOTFILE, util::text( 'Error: ‘[_1]’ is not a regular file.', $_ ) );
-            }
-
-            if ( -l $_ )
-            {
-                print( $pager util::text( 'Warning: ‘[_1]’ is a symbolic link, which is not portable.', $_ ) );
-            }
         }
 
         dbg::leave();
@@ -499,7 +675,8 @@ package util
 
         if ( ! defined( $subcommand ) )
         {
-            util::throw( ::E_SUB_MISSING, util::text( 'Error: No subcommand given to ‘[_1]’.', $command ) );
+            util::throw( ::E_SUB_MISSING, util::text( 'Error: No subcommand given to ‘[_1]’.', $command ) .
+                                          util::text( 'Try ‘[_1]’.', 'gim help' . $help_hint ) );
         }
 
         if ( $package->isa( 'worker' ) && $package ne 'worker' )
@@ -508,7 +685,8 @@ package util
         }
         else
         {
-            util::throw( ::E_SUB_UNKNOWN, util::text( 'Error: Unknown subcommand ‘[_1]’.', $subcommand ) );
+            util::throw( ::E_SUB_UNKNOWN, util::text( 'Error: Unknown subcommand ‘[_1]’.', $subcommand ) .
+                                          util::text( 'Try ‘[_1]’.', 'gim help' . $help_hint ) );
         }
 
         dbg::leave();
@@ -516,15 +694,17 @@ package util
     }
 
     # Given a basic message and a list of arguments, this function:
-    # 1) inserts arguments in place of placeholders '[_1]', '[_2]'
-    #    etc. in the basic message;
-    # 2) If input message started with "Error:" or "Warning:", will
-    #    color output message up to the first ":" with _ERROR_COL /
+    # 1) looks up the basic message in the catalog, replacing it
+    #    with a localized version if available;
+    # 2) inserts arguments in place of placeholders '[_1]', '[_2]'
+    #    etc. in the (localized) basic message;
+    # 3) If input message started with 'Error:' or 'Warning:', will
+    #    color output message up to the first ':' with _ERROR_COL /
     #    _WARN_COL.
     sub text( $;@ )
     {
         dbg::enter();
-        my $text = $_[0];
+        my $text = $_catalog{ $_[0] } || $_[0];
 
         # Replace '[_n]' with argument #n.
         for ( my $i = 1; $i < @_; ++$i )
@@ -695,6 +875,128 @@ package devel
         return ::E_OK;
     }
 
+    # 'devel catalog' generates a catalog, containing all texts
+    # that need to be localized.
+    package devel::catalog
+    {
+        our @ISA = 'devel';
+
+        sub run()
+        {
+            dbg::enter();
+            my $catalog_file = 'i-default.catalog';
+
+            if ( -e $catalog_file )
+            {
+                die "Refusing to overwrite existing ‘$catalog_file’.";
+            }
+
+            print( "Writing catalog template to ‘$catalog_file’.\n" );
+
+            # Reading util::text strings from script
+            # Stored in a map so duplicate entries get squashed into one
+            open( my $script, '<', __FILE__ ) || die 'Failed to open script for inspection.';
+            my %out;
+            my %warn;
+            my %err;
+
+            while ( <$script> )
+            {
+                my ( $key ) = m/util::text\( *${\::RE_QUOTED_STRING}/;
+
+                if ( defined( $key ) )
+                {
+                    if ( $key =~ m/^Error: / )
+                    {
+                        $err{ $key } = 1;
+                    }
+                    elsif ( $key =~ m/^Warning: / )
+                    {
+                        $warn{ $key } = 1;
+                    }
+                    else
+                    {
+                        $out{ $key } = 1;
+                    }
+                }
+            }
+
+            close( $script );
+
+            open( my $catalog, '>', $catalog_file );
+
+            # Output messages
+            print( $catalog "# Localize by translating the right-hand side strings.\n" .
+                            "# Do not edit the left-hand side strings, they are used for lookup.\n" .
+                            "\n# General output\n\n" );
+
+            foreach ( sort keys %out )
+            {
+                printf( $catalog "%-45s => %s\n", "'$_'", "'$_'" );
+            }
+
+            # Warning messages
+            print( $catalog "\n# Warning messages\n\n" );
+
+            foreach ( sort keys %warn )
+            {
+                printf( $catalog "%-65s => %s\n", "'$_'", "'$_'" );
+            }
+
+            # Error messages
+            print( $catalog "\n# Error messages\n\n" );
+
+            foreach ( sort keys %err )
+            {
+                printf( $catalog "%-65s => %s\n", "'$_'", "'$_'" );
+            }
+
+            # Help categories
+            print( $catalog "\n# Categories\n\n" );
+
+            foreach( sort { $_category{ $a }{ sortorder } <=> $_category{ $b }{ sortorder } } keys %_category )
+            {
+                my $about = "'$_category{ $_ }{ about }'";
+                printf( $catalog "%-35s => %-35s # %s\n", $about, $about, $_ );
+            }
+
+            # Help texts for commands
+            print( $catalog "\n" . ( '#' x 68 ) . "\n# Subcommands\n\n" .
+                            "# Localize by translating the text.\n" .
+                            "# The first line is the 'about' line written by 'gim help'.\n" .
+                            "# The remaining text is formatted by Text::Wrap, so use empty\n" .
+                            "# lines to mark paragraphs and do not bother with line lengths.\n" .
+                            "# Do not edit the command name in square brackets, it is used for\n" .
+                            "# lookup.\n"
+            );
+
+            foreach ( sort keys %_help )
+            {
+                printf( $catalog "\n[%s]\n\n%s\n\n%s", $_, $_help{ $_ }{ about }, $_help{ $_ }{ help } );
+
+                if ( ! $_category{ $_help{ $_ }{ category } } )
+                {
+                    print( STDERR "‘$_’: Unknown category ‘$_help{ $_ }{ category }’" );
+                }
+            }
+
+            # Help texts for topics
+            print( $catalog "\n" . ( '#' x 68 ) . "\n# Topics\n\n" .
+                            "# Same as for Subcommands above. First line is 'about', the\n" .
+                            "# remaining text will be formatted by Text::Wrap. Leave the\n" .
+                            "# topic name in square brackets alone.\n"
+            );
+
+            foreach ( sort { $_topic{ $a }{ sortorder } <=> $_topic{ $b }{ sortorder } } keys %_topic )
+            {
+                printf( $catalog "\n[%s]\n\n%s\n\n%s", $_, $_topic{ $_ }{ about }, $_topic{ $_ }{ help } );
+            }
+
+            close( $script );
+            dbg::leave();
+        }
+    }
+
     # 'devel qtd' runs a couple of tests on util::qtd.
     package devel::qtd
     {
@@ -856,6 +1158,8 @@ $_help{ 'devel' } =
     help => q{Various features for maintainers of gim.
 
 Available subcommands are:
+
+ * catalog  --  writes a file ‘i-default.catalog’ with localizable strings
 
  * qtd      --  testing function for util::qtd
 
@@ -1068,6 +1372,8 @@ Getopt::Long::GetOptions(
     'debug:s' => \&dbg::init,
     'help|h' => sub { $command = help->new(); }
 );
+
+l10n::init();
 
 $command = util::subcommand() unless ( $command );
 $command->run();
