@@ -1783,6 +1783,31 @@ package devel
         }
     }
 
+    # 'devel todo' lists parts of Gim still requiring work.
+    package devel::todo
+    {
+        our @ISA = 'devel';
+
+        sub run()
+        {
+            dbg::enter();
+            my $self = shift( @_ );
+            my $pager = util::pager();
+            open( my $script, '<', __FILE__ ) || die 'Failed to open script for inspection.';
+
+            while ( <$script> )
+            {
+                if ( /TODO\x3a/ )
+                {
+                    print $pager $_;
+                }
+            }
+
+            close( $script );
+            dbg::leave();
+        }
+    }
+
 $_help{ 'devel' } =
 {
     category => 'local',
@@ -1800,6 +1825,8 @@ Available subcommands are:
  * setup    --  creates a number of repositories for feature testing
 
  * test     --  runs a number of regression tests
+
+ * todo     --  list TODO comments in script
 }};
 
 }
@@ -3299,3 +3326,65 @@ l10n::init();
 
 $command = util::subcommand() unless ( $command );
 $command->run();
+
+# $ git rev-parse HEAD
+# dc04d9b95c43534625c2b5026a5585418f4d711b
+
+# gim1 util::refs
+# $ git show-ref
+# dc04d9b95c43534625c2b5026a5585418f4d711b refs/heads/main
+# dc04d9b95c43534625c2b5026a5585418f4d711b refs/remotes/origin/HEAD
+# dc04d9b95c43534625c2b5026a5585418f4d711b refs/remotes/origin/main
+# ...auch alle Tags.
+
+# branch_info
+# - git rev-parse --abbrev-ref --symbolic-full-name $branch@{upstream}
+# - git rev-parse --abbrev-ref --symbolic-full-name $branch@{push}
+
+# sub state()
+# {
+#     dbg::enter();
+#     my $gitdir = root();
+#     my $state;
+#
+#     if ( ! $gitdir )
+#     {
+#         print( STDERR l10n::text( 'Error: Command requires valid working copy.' ) );
+#         exit( ::E_NO_WORKDIR );
+#     }
+#
+#     if ( -d "$gitdir/rebase-apply" )
+#     {
+#         if ( -f "$gitdir/rebase-apply/rebasing" )
+#         {
+#             $state = 'REBASE';
+#         }
+#         elsif ( -f "$gitdir/rebase-apply/applying" )
+#         {
+#             $state = 'APPLY';
+#         }
+#         else
+#         {
+#             $state = 'APPLY OR REBASE';
+#         }
+#     }
+#     elsif ( -f "$gitdir/rebase-merge/interactive" )
+#     {
+#         $state = 'INTERACTIVE REBASE';
+#     }
+#     elsif ( -d "$gitdir/rebase-merge" )
+#     {
+#         $state = 'MERGE REBASE';
+#     }
+#     elsif ( -f "$gitdir/MERGE_HEAD" )
+#     {
+#         $state = 'MERGE';
+#     }
+#     elsif ( -f "$gitdir/BISECT_LOG" )
+#     {
+#         $state = 'BISECT';
+#     }
+#
+#     dbg::leave();
+#     return $state;
+# }
