@@ -1313,6 +1313,116 @@ Available subcommands are:
 }
 
 ###################################################################
+# 'diff' shows differences between commits, commits and the working
+# copy etc.
+package diff # TODO: Handling and documentation of @ARGV
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        my $tool;
+        my $toolhelp;
+        Getopt::Long::GetOptions(
+            'tool|t=s' => \$tool,
+            'tools|tools-help|tool-help' => \$toolhelp
+        );
+        my $rc = 0;
+
+        if ( defined( $toolhelp ) )
+        {
+            $self->toolhelp();
+        }
+        else
+        {
+            $self->init();
+            my @args = util::qtd( @ARGV );
+
+            if ( exists( $ENV{ GIM_DIFFTOOL } ) )
+            {
+                $tool = $ENV{ GIM_DIFFTOOL };
+            }
+
+            if ( defined( $tool ) )
+            {
+                $rc = util::execute( "git difftool --no-prompt --tool '$tool' @args", out => -1 );
+            }
+            else
+            {
+                my $opts = "-U3 -W";
+
+                if ( exists( $ENV{ GIM_DIFFOPTS } ) )
+                {
+                    $opts = $ENV{ GIM_DIFFOPTS };
+                }
+
+                my $pager = util::pager();
+                my $exe = new executor( "git diff --color=$_COLOR --src-prefix=\"src:\" --dst-prefix=\"dst:\" $opts -- @ARGV", throw => 1 );
+
+                while ( $exe->readline() )
+                {
+                    print( $pager $_ );
+                }
+            }
+
+        }
+
+        dbg::leave();
+        return ::E_OK;
+    }
+
+    sub toolhelp()
+    {
+        dbg::enter();
+        my $pager = util::pager();
+        my $exe = new executor( 'git difftool --tool-help', throw => 1 );
+
+        print( $pager util::text( 'Installed / available diff tools:' ) );
+
+        while ( $exe->readline() )
+        {
+            if ( m/^	/ )
+            {
+                s/^	*([^\s]*)/    $1/;
+                print( $pager $_ );
+            }
+            elsif ( m/^The following/ )
+            {
+                print( $pager "\n" . util::text( 'Supported but not installed:' ) );
+            }
+        }
+
+        dbg::leave();
+    }
+
+$_help{ 'diff' } =
+{
+    category => 'info',
+    about => 'Show differences',
+    usage => q{gim diff [...]
+    gim diff [--tool <tool> | -t <tool>] [...]
+    gim diff [--tools | --tool-help]
+},
+    help => q{Shows differences between commits, commits and the
+working copy, etc.
+
+Unless otherwise specified, ‘git-diff’ is used with ‘--unified=3
+--function-context’ as default options, which you can override by
+setting the GIM_DIFFOPTS environment variable.
+
+You can select a different tool than ‘git-diff’ with the ‘--tool’
+option (short form ‘-t’). You can make that choice persistent by
+setting the GIM_DIFFTOOL environment variable.
+
+To get a list of available (and supported but unavailable) diff
+tools, use either ‘--tools’ or ‘--tool-help’.
+}};
+
+}
+
+###################################################################
 # 'help' covers user documentation.
 package help
 {
