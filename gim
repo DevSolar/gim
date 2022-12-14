@@ -2330,6 +2330,36 @@ The ‘--verbose’ / ‘-v’ option corresponds to ‘git log --fuller’.
 }
 
 ###################################################################
+# 'mkbranch' creates a new branch
+package mkbranch
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        util::check_argv( 1, 1 );
+        $self->init();
+        my $branch = shift( @ARGV );
+        util::execute( "git branch -- $branch", rc => -1 );
+        util::execute( "git switch -- $branch", rc => -1 );
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'mkbranch' } =
+{
+    category => 'local',
+    about => 'Create a new branch',
+    usage => q{gim mkbranch <branch>
+},
+    help => q{Create a new branch.
+}};
+
+}
+
+###################################################################
 # 'push' publishes your local commits
 package push
 {
