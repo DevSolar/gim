@@ -24,6 +24,7 @@ use constant E_NOTTRACKED    =>  9;  # Not a file under version control
 use constant E_INTERNAL      => 10;  # Internal error
 use constant E_NOWORKINGCOPY => 11;  # Not a working copy
 use constant E_SYNTAX        => 12;  # Command syntax error
+use constant E_UNABLE        => 13;  # Subcommand precondition fail
 
 ###################################################################
 # Repo Status
@@ -596,6 +597,27 @@ package util
 
         dbg::leave();
         return $rc;
+    }
+
+    # Request confirmation from user.
+    sub confirmation()
+    {
+        dbg::enter();
+        print( "\n" . util::text( "Enter yes/[N]o: " ) );
+        my $positive = util::text( "yes" );
+        chomp( $positive );
+        my $answer = <STDIN>;
+        chomp( $answer );
+
+        if ( ! defined( $answer ) || length( $answer ) == 0 )
+        {
+            print( "No\n" );
+        }
+
+        dbg::msg( "Answer: ‘$answer’" );
+        dbg::msg( "Positive: ‘$positive’" );
+        dbg::leave();
+        return ( defined( $answer ) && ( $answer eq $positive ) );
     }
 
     # Execute external command.
@@ -2155,6 +2177,93 @@ details.)
 
 A list of uncommited changes, if any. (See ‘gim help commit’
 for details.)
+}};
+
+}
+
+###################################################################
+# 'uncommit' allows to undo local (unpublished) commits.
+package uncommit
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        $self->init();
+        my $yes;
+        Getopt::Long::GetOptions(
+            'yes|y' => \$yes
+        );
+        util::check_argv( -1, 0 );
+        my $logspec = "HEAD";
+        my @commits;
+
+        if ( defined( $self->{ 'latest_pushed' } ) )
+        {
+            $logspec = '@{push}^1..HEAD';
+        }
+
+        my $log = git::log( $logspec );
+
+        while ( $log->readline() )
+        {
+            chomp;
+            push( @commits, $_ );
+        }
+
+        $log->close();
+
+        if ( scalar( @commits ) < 2 )
+        {
+            util::throw( ::E_UNABLE, util::text( "Error: Nothing to uncommit." ) );
+        }
+        else
+        {
+            my ( $hash, $time_iso, $time_rel, $name, $mail, $refs, $msg );
+
+            if ( ! defined( $yes ) )
+            {
+                print( "\n" . util::text( "Really undo this commit?" ) );
+                ( $hash, $time_iso, $time_rel, $name, $mail, $refs, $msg ) = split( '\x{1f}', $commits[0] );
+                printf( "%s%s  %15s%s  %s\n", $_TIME_COL, $time_iso, $time_rel, $_RESET, $msg );
+                print( util::text( "This will reset commit history to:" ) );
+                ( $hash, $time_iso, $time_rel, $name, $mail, $refs, $msg ) = split( '\x{1f}', $commits[1] );
+                printf( "%s%s  %15s%s  %s\n", $_TIME_COL, $time_iso, $time_rel, $_RESET, $msg );
+
+                if ( util::confirmation() )
+                {
+                    $yes = 1;
+                }
+            }
+
+            if ( defined( $yes ) )
+            {
+                util::execute( 'git reset --mixed ' . $hash, rc => -1 );
+            }
+        }
+
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'uncommit' } =
+{
+    category => 'local',
+    about => 'Undo local commit',
+    usage => q{gim uncommit [--yes|-y]
+},
+    help => q{Undo latest local (unpublished) commit.
+
+Removes the latest local commit from the commit history.
+
+Local changes remain untouched.
+
+By default this will ask for confirmation, stating the commit you
+are about to undo and the commit you will reset your commit history
+to. With the ‘--yes’ / ‘-y’ option, no confirmation will be asked
+for.
 }};
 
 }
