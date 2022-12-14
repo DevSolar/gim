@@ -61,6 +61,12 @@ if ( -t STDOUT )
 my $_OK_COL       = $_GREEN;
 my $_ERROR_COL    = $_RED;
 my $_WARN_COL     = $_YELLOW;
+my $_CURRENT_COL  = $_CYAN;
+my $_UPSTREAM_COL = $_YELLOW;
+my $_PUSH_COL     = $_BLUE;
+my $_TIME_COL     = $_BLUE;
+my $_NAME_COL     = $_CYAN;
+my $_STASH_COL    = $_YELLOW;
 
 ###################################################################
 # Globals
@@ -1706,7 +1712,12 @@ package fetch
         util::check_argv( -1, 0 );
         $self->init();
         util::execute( 'git fetch --all --quiet', rc => -1, output => -1 );
-        # TODO: status->run();
+        my $pager = util::pager();
+        print( $pager util::text( 'Local repository up to date.' ) . "\n" );
+
+        bless( $self, 'status' );
+        $self->run();
+
         dbg::leave();
         return ::E_OK;
     }
@@ -1957,6 +1968,166 @@ some way, but this is not recommended.
 }
 
 ###################################################################
+# 'status' gives information about the repository's current state
+package status
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        util::check_argv( -1, 0 );
+        $self->init();
+        my $pager = util::pager();
+
+        # ---------------------------------------------------------
+        print( $pager util::text( 'Current branch:' ) );
+
+        printf( $pager '  %s%-20s%s',
+                       $_CURRENT_COL, $self->{ 'current_branch' }, $_RESET );
+
+        if ( $self->{ 'repo_status' } != ::S_DETACHED )
+        {
+            ( $self->{ 'upstream' }, $self->{ 'push' } ) = git::upstream( $self->{ 'current_branch' } );
+
+            if ( defined( $self->{ 'upstream' } ) )
+            {
+                if ( defined( $self->{ 'push' } ) && ( $self->{ 'upstream' } ne $self->{ 'push' } ) )
+                {
+                    printf( $pager '  <-  %s%s%s  ->  %s%s%s',
+                                   $_UPSTREAM_COL, $self->{ 'upstream' }, $_RESET,
+                                   $_PUSH_COL, $self->{ 'push' }, $_RESET );
+                }
+                else
+                {
+                    printf( $pager '  <->  %s%s%s',
+                                   $_UPSTREAM_COL, $self->{ 'upstream' }, $_RESET );
+                }
+            }
+        }
+
+        print( $pager "\n" );
+
+        # ---------------------------------------------------------
+        if ( defined( $self->{ 'upstream' } ) )
+        {
+            my $log = git::log( ( defined( $self->{ 'current_branch' } ) ? 'HEAD..' : '' ) . '@{upstream}' );
+
+            while ( $log->readline() )
+            {
+                if ( $log->{ 'linecount' } == 1 )
+                {
+                    print( $pager util::text( 'Unmerged:' ) );
+                }
+
+                chomp;
+                my ( $hash, $time_iso, $time_rel, $name, $mail, $refs, $msg ) = split( '\x{1f}' );
+                printf( $pager "  %s%15s%s  %s%-15s%s  %s\n",
+                               $_TIME_COL, $time_rel, $_RESET,
+                               $_NAME_COL, $name, $_RESET,
+                               $msg );
+            }
+
+            $log->close();
+        }
+
+        # ---------------------------------------------------------
+        if ( defined( $self->{ 'upstream' } ) )
+        {
+            if ( defined( $self->{ 'current_branch' } ) )
+            {
+                my $log = git::log( '@{push}..HEAD' );
+
+                while ( $log->readline() )
+                {
+                    if ( $log->{ 'linecount' } == 1 )
+                    {
+                        print( $pager util::text( 'Unpublished:' ) );
+                    }
+
+                    chomp;
+                    my ( $hash, $time_iso, $time_rel, $name, $mail, $refs, $msg ) = split( '\x{1f}' );
+                    printf( $pager "  %s%15s%s                   %s\n",
+                                   $_TIME_COL, $time_rel, $_RESET,
+                                   $msg );
+                }
+
+                $log->close();
+            }
+        }
+
+        # ---------------------------------------------------------
+        my $stashed = new executor( "git stash list --pretty=format:'%ai\x{1f}%ar\x{1f}%aN\x{1f}%gd\x{1f}%s'", throw => 1 );
+
+        while ( $stashed->readline() )
+        {
+            if ( $stashed->{ 'linecount' } == 1 )
+            {
+                print( $pager util::text( 'Stashed:' ) );
+            }
+
+            chomp;
+            my ( $time_iso, $time_rel, $name, $sel, $msg ) = split( '\x{1f}' );
+            $msg =~ s/^WIP on ([^:]*): [a-f0-9]* /Work on $1: /;
+            $sel =~ s/stash@\{([0-9]])\}/$1/;
+            printf( $pager "  %s%15s%s  %sstash #%-3s%s       %s\n",
+                           $_TIME_COL, $time_rel, $_RESET,
+                           $_STASH_COL, $sel, $_RESET,
+                           $msg );
+        }
+
+        $stashed->close();
+
+        # ---------------------------------------------------------
+        my $changes = new executor( "git -c color.status=$_COLOR status --short", throw => 1 );
+
+        while ( $changes->readline() )
+        {
+            if ( $changes->{ 'linecount' } == 1 )
+            {
+                print( $pager util::text( 'Uncommitted:' ) );
+            }
+
+            print( $pager '  ' . $_RESET . $_ );
+        }
+
+        $changes->close();
+
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'status' } =
+{
+    category => 'info',
+    about => 'Get general status',
+    usage => q{gim status
+},
+    help => q{Get general status information.
+
+This includes:
+
+The name of the current branch, plus the name of the associated
+upstream branch and (if configured) push branch.
+
+A list of commits already fetched from upstream which have not
+yet been merged into your working copy, if any. (See ‘gim help
+update’ for details.)
+
+A list of local commits not yet published, if any. (See ‘gim
+help push’ for details.)
+
+A list of stashed changes, if any. (See ‘gim help stash’ for
+details.)
+
+A list of uncommited changes, if any. (See ‘gim help commit’
+for details.)
+}};
+
+}
+
+###################################################################
 # 'update' local repository and working directory with incoming
 # changes.
 package update
@@ -2017,7 +2188,9 @@ package update
             print( $pager util::text( 'Repository in ‘detached HEAD’ state, cannot update.' ) . "\n" );
         }
 
-        # TODO: status->run()
+        bless( $self, 'status' );
+        $self->run();
+
         dbg::leave();
         return ::E_OK;
     }
@@ -2055,6 +2228,31 @@ environment variable. If this variable is set, Gim respects its
 setting. If LESS is not set, Gim will use ‘--quit-if-one-screen’,
 ‘--quit-at-eof’, ‘--RAW-CONTROL-CHARS’, and ‘--chop-long-lines’
 (‘-FeRS’).
+}};
+
+###################################################################
+$_topic{ detached } =
+{
+    sortorder => 1,
+    about => q{Detached HEAD / Unnamed Branch},
+    help => q{Usually ‘HEAD’ is a symbolic reference to the latest
+commit -- the head commit -- of whatever your current branch is.
+When you ‘gim switch’ to a different branch, ‘HEAD’ (and your
+working copy) is updated accordingly.
+
+Sometimes it is desirable to point your working directory at a
+previous state. Your ‘HEAD’ will no longer refer to any existing
+branch's head; it will be “detached”. Another way to think about
+it would be that you created a new branch, branching off at that
+previous point in the commit history. Any commits you would commit
+while in that state would go on that as-of-yet unnamed branch.
+
+In this state, ‘gim status’ will show something like
+‘<unnamed:a7f653c>’ (with the appropriate commit hash) instead of
+the (unavailable) current branch name.
+
+You can either name the branch (‘git mkbranch <branch>’), or
+abandon it by ‘gim switch’ to a previously existing branch.
 }};
 
 ###################################################################
