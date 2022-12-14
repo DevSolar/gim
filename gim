@@ -1060,6 +1060,40 @@ contents, recursively.
 }
 
 ###################################################################
+# 'chmod' modifies the executable flag of a file
+package chmod
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        $self->init();
+        util::check_argv( 2, -1 );
+        my $mode = shift( @ARGV );
+        my @args = util::qtd( @ARGV );
+        util::check_filespecs( ::E_NOTTRACKED, @args );
+        util::execute( "chmod $mode @args", rc => -1, out => -1 );
+        util::execute( "git update-index --chmod=$mode @args", rc => -1, out => -1 );
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'chmod' } =
+{
+    category => 'local',
+    about => 'Modify executable flag',
+    usage => q{gim chmod [+x|-x] <filespec> [<filespec> ...]
+},
+    help => q{Modify the executable flag of file(s).
+
+Set / unset the executable flag of one or more files.
+}};
+
+}
+
+###################################################################
 # 'clone' a repository
 package clone
 {
