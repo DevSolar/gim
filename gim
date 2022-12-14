@@ -23,6 +23,7 @@ use constant E_NOTFILEORDIR  =>  8;  # Not a regular file or directory
 use constant E_NOTTRACKED    =>  9;  # Not a file under version control
 use constant E_INTERNAL      => 10;  # Internal error
 use constant E_NOWORKINGCOPY => 11;  # Not a working copy
+use constant E_SYNTAX        => 12;  # Command syntax error
 
 ###################################################################
 # Repo Status
@@ -1024,6 +1025,97 @@ local repository with the next commit.
 
 Directories specified as arguments will be added including their
 contents, recursively.
+}};
+
+}
+
+###################################################################
+# 'commit' changes in the working directory to local repository.
+package commit
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        $self->init();
+        my $amend;
+        my $file;
+        my $msg;
+        Getopt::Long::GetOptions(
+            'amend'       => \$amend,
+            'file|F=s'    => \$file,
+            'message|m=s' => \$msg
+        );
+
+        if ( defined( $file ) && defined( $msg ) )
+        {
+            util::throw( ::E_SYNTAX, util::text( 'Error: Conflicting options ‘[_1]’ and ‘[_2]’.', '--file', '--message' ) );
+        }
+
+        my $command = 'git commit --quiet';
+
+        if ( defined( $amend ) )
+        {
+            $command .= ' --amend';
+        }
+
+        if ( defined( $file ) )
+        {
+            util::check_filespecs( ::E_NOTFILE, $file );
+            ( $file ) = util::qtd( $file );
+            $command .= " --file $file";
+        }
+
+        if ( defined( $msg ) )
+        {
+            ( $msg ) = util::qtd( $msg );
+            $command .= " --message $msg";
+        }
+
+        if ( @ARGV )
+        {
+            if ( $ARGV[0] eq '--' )
+            {
+                shift @ARGV;
+            }
+
+            util::check_filespecs( ::E_NOTFILEORDIR, @ARGV );
+            my @args = util::qtd( @ARGV );
+            $command .= " -- @args";
+        }
+        else
+        {
+            $command .= ' --all';
+        }
+
+        util::execute( "$command", rc => -1, out => -1 );
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'commit' } =
+{
+    category => 'local',
+    about => 'Commit changes to local repository',
+    usage => q{gim commit [--amend] [<filespec> ...]
+    gim commit [--amend] [--message | -m <msg>] [<filespec> ...]
+    gim commit [--amend] [--file | -F <filename>] [<filespec> ...]
+},
+    help => q{Commit changes to the local repository.
+
+The first variant opens an editor for you to enter the commit
+message.
+
+The second variant uses the passed string as the commit message.
+
+The third variant uses the contents of the specified file as the
+commit message.
+
+If the ‘--amend’ option is specified, the last commit (which must
+not have been published yet) will be amended instead of creating a
+new commit.
 }};
 
 }
