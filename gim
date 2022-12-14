@@ -7,6 +7,86 @@ use open( ':std', ':encoding(UTF-8)' );
 
 ###################################################################
 ###################################################################
+# Exit Codes
+use constant E_OK            =>  0;
+use constant E_SUB_MISSING   =>  1;  # No subcommand given
+use constant E_SUB_UNKNOWN   =>  2;  # Subcommand unknown
+
+###################################################################
+###################################################################
+# 'util' covers any utility subroutines.
+package util
+{
+    # Pull subcommand from @ARGV.
+    # When called from the top level, checks existence of worker
+    # class by that name, and returns an instance of that class.
+    # When called from a worker class, checks existence of a run_*
+    # subroutine of that name, and returns that subroutine name.
+    sub subcommand()
+    {
+        my $subcommand = shift( @ARGV );
+        my $caller = caller(0);
+        my $help_hint;
+        my $command;
+        my $package;
+        my $rc;
+
+        if ( $caller eq 'gim' )
+        {
+            $help_hint = '';
+            $command = $caller;
+            $package = $subcommand;
+        }
+        else
+        {
+            $help_hint = ' ' . $caller;
+            $command = 'gim ' . $caller;
+            $package = $caller . '::' . $subcommand;
+        }
+
+        if ( ! defined( $subcommand ) )
+        {
+            util::throw( ::E_SUB_MISSING, 'Error: No subcommand given to ‘' . $command . '’.' );
+        }
+
+        if ( $package->isa( 'worker' ) && $package ne 'worker' )
+        {
+            $rc = $package->new();
+        }
+        else
+        {
+            util::throw( ::E_SUB_UNKNOWN, 'Error: Unknown subcommand ‘' . $subcommand . '’' );
+        }
+
+        return $rc;
+    }
+
+    # Throw Gim two-element exception: $0 as the error code, $1 as
+    # the exception message.
+    sub throw( @ )
+    {
+        $! = $_[0];
+        die( $_[1] . "\n" );
+    }
+}
+
+###################################################################
+###################################################################
+# Base class for all subcommands.
+package worker
+{
+    sub new()
+    {
+        my $class = shift( @_ );
+        my $self = {};
+        bless( $self, $class );
+        return $self;
+    }
+}
+
+###################################################################
+###################################################################
 package gim;
 
-exit 0;
+my $command = util::subcommand();
+$command->run();
