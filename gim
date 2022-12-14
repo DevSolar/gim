@@ -969,7 +969,8 @@ package worker
 
         if ( $rc == 128 )
         {
-            $self->{ 'current_branch' } = '<unnamed>';
+            $self->{ 'current_branch' } = util::execute( 'git status --porcelain=2 --branch | head -n 1', rc => -1, out => 1 );
+            $self->{ 'current_branch' } =~ s/# branch\.oid ([0-9a-f]{7}).*/<unnamed:$1>/;
             $self->{ 'repo_status' } = ::S_DETACHED;
         }
 
@@ -1724,6 +1725,65 @@ Use ‘gim help’ to get an overview of the available subcommands, and
 There are also general help topics available. You get a list of
 these with ‘gim help topic’, and display a specific topic with ‘gim
 help topic <topic>’.
+}};
+
+}
+
+###################################################################
+# 'init' creates a new repository.
+package init
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        my $type;
+        Getopt::Long::GetOptions(
+            'local|l' => \$type
+        );
+        util::check_argv( 1, 1 );
+        my $repo = shift( @ARGV );
+
+        if ( -e $repo )
+        {
+            util::throw( ::E_SYNTAX, util::text( 'Error: ‘[_1]’ already exists.', $repo ) );
+        }
+
+        if ( defined( $type ) )
+        {
+            $type = '';
+        }
+        else
+        {
+            $type = '--bare';
+        }
+
+        util::execute( "git init --quiet $type -- $repo", rc => -1, output => -1 );
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'init' } =
+{
+    category => 'local',
+    about => 'Create a new repository',
+    usage => q{gim init [--local|-l] <repo>
+},
+    help => q{Create a new repository.
+
+By default, a “bare” repository is created, which should then be
+placed in an accessible and secure place (like a file / web / cloud
+server) and be cloned with ‘gim clone’ to get a local repository
+and working copy. This is the recommended procedure.
+
+With the ‘--local’ option (short form ‘-l’), you create both a
+repository and a working copy under the specified name, working
+without an upstream repository.
+
+Others could clone a local repository if you make it accessible in
+some way, but this is not recommended.
 }};
 
 }
