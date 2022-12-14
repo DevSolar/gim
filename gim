@@ -11,12 +11,105 @@ use open( ':std', ':encoding(UTF-8)' );
 use constant E_OK            =>  0;
 use constant E_SUB_MISSING   =>  1;  # No subcommand given
 use constant E_SUB_UNKNOWN   =>  2;  # Subcommand unknown
+use constant E_EXECUTE_FAIL  =>  3;  # Execution failure
+use constant E_SIG_INTERRUPT =>  4;  # Interrupted by signal
+use constant E_UNEXPECTED    =>  5;  # Unexpected backend error
 
 ###################################################################
 ###################################################################
 # 'util' covers any utility subroutines.
 package util
 {
+    # Check return code from external calls
+    sub check_rc( $$ )
+    {
+        my ( $rc, $command ) = @_;
+
+        # Mapping of signal numbers to signal names for error messages
+        use Config '%Config';
+        my @sig_names;
+        @sig_names[ split( ' ', $Config{ sig_num } ) ] = split( ' ', $Config{ sig_name } );
+
+        if ( $rc != 0 )
+        {
+            if ( $rc == -1 )
+            {
+                util::throw( ::E_EXECUTE_FAIL, 'Error: Failed to execute ‘sh’.' );
+            }
+            elsif ( $rc & 127 )
+            {
+                $rc &= 127;
+                util::throw( ::E_SIG_INTERRUPT, "Error: ‘$command’ interrupted by signal $rc ‘$sig_names[$rc]’." );
+            }
+            else
+            {
+                $rc = $rc >> 8;
+
+                if ( $rc > 128 )
+                {
+                    $rc -= 128;
+                    util::throw( ::E_SIG_INTERRUPT, "Error: ‘$command’ interrupted by signal $rc ‘$sig_names[$rc]’." );
+                }
+                if ( $rc == 127 )
+                {
+                    util::throw( ::E_EXECUTE_FAIL, "Error: Failed to execute ‘$command’.\nCommand not found." );
+                }
+                elsif ( $rc == 126 )
+                {
+                    util::throw( ::E_EXECUTE_FAIL, "Error: Command ‘$_[0]’ not executable." );
+                }
+            }
+        }
+
+        return $rc;
+    }
+
+    # Execute external command.
+    # rc => -1: Throw if command returns non-zero
+    # rc =>  0: Throw on failure to execute
+    # rc =>  1: Return the command's return code (default)
+    # out => -1: Output pass through
+    # out =>  0: Ignore the command's output (default)
+    # out =>  1: Return the command's output
+    sub execute( $;@ )
+    {
+        my $command = shift @_;
+        my %options = ( rc => 1, out => 0, @_ );
+        my $output = '';
+
+        if ( $options{ out } >= 0 )
+        {
+            $output = `$command 2>&1`;
+            chomp( $output );
+        }
+        else
+        {
+            system( "$command" );
+        }
+
+        my $rc = check_rc( $?, $command );
+
+        if ( ( $options{ rc } == -1 ) && ( $rc != 0 ) )
+        {
+            util::throw( ::E_UNEXPECTED, 'Error: Failed to execute ‘' . caller(0) . "’.\n" .
+                                         "‘$command’ returned ‘$rc’:\n" .
+                                         $output . "\n" );
+        }
+
+        if ( ( $options{ rc } == 1 ) && ( $options{ out } == 1 ) )
+        {
+            return ( $rc, $output );
+        }
+        elsif ( $options{ out } == 1 )
+        {
+            return $output;
+        }
+        else
+        {
+            return $rc;
+        }
+    }
+
     # Pull subcommand from @ARGV.
     # When called from the top level, checks existence of worker
     # class by that name, and returns an instance of that class.
@@ -67,6 +160,80 @@ package util
     {
         $! = $_[0];
         die( $_[1] . "\n" );
+    }
+}
+
+###################################################################
+###################################################################
+# Similar to util::execute(), which provides combined stdout and
+# stderr of a command in scalar return values, this class gives
+# access to stdout of a command line by line.
+#
+# $self->{ out } is a stream handle on stdout.
+# $self->{ err } is a stream handle on stderr.
+# $self->{ errors } will receive a dump of $self->{ err } when
+# $self->close() is called.
+package executor
+{
+    # Requires the command to be executed as parameter.
+    sub new( $ )
+    {
+        use IPC::Open3;
+        my $class = shift( @_ );
+        my $self = {};
+        $self->{ command } = shift( @_ );
+        bless( $self, $class );
+
+        use Symbol 'gensym';
+        $self->{ err } = gensym;
+        eval { $self->{ pid } = open3( $self->{ in }, $self->{ out }, $self->{ err }, $self->{ command } ); };
+
+        if ( $@ )
+        {
+            $self->{ pid } = 0;
+            util::throw( ::E_EXECUTE_FAIL, "Error: Failed to execute ‘$self->{ command }’.\n" . $! . "\n" );
+        }
+
+        $self->{ 'linecount' } = 0;
+
+        return $self;
+    }
+
+    # Writes a line of output to $_.
+    sub readline()
+    {
+        my $self = shift( @_ );
+        my $fh = $self->{ out };
+
+        if ( defined( $_ = <$fh> ) )
+        {
+            ++$self->{ 'linecount' };
+        }
+
+        return $_;
+    }
+
+    # Closes the stream, writing stderr to $self->{ errors }.
+    # This is optional, as the destructor will do it anyway.
+    sub close()
+    {
+        my $self = shift( @_ );
+
+        if ( $self->{ pid } ne 0 )
+        {
+            my $fh = $self->{ err };
+            $self->{ errors } = do { local $/; <$fh> };
+
+            waitpid( $self->{ pid }, 0 );
+            $self->{ pid } = 0;
+            $self->{ rc } = util::check_rc( $?, $self->{ command } );
+        }
+    }
+
+    sub DESTROY
+    {
+        my $self = shift;
+        $self->close();
     }
 }
 
