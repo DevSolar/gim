@@ -1339,6 +1339,110 @@ package devel
         }
     }
 
+    # 'setup' sets up a number of repositories for feature testing
+    package devel::setup
+    {
+        our @ISA = 'devel';
+
+        sub run()
+        {
+            dbg::enter();
+            use Cwd;
+            use File::Path       qw( make_path remove_tree );
+            remove_tree( 'setup' );
+
+            sub subdir($)
+            {
+                dbg::enter();
+                my $subdir = 'setup/' . shift( @_ );
+                make_path( $subdir );
+                chdir( $subdir );
+                dbg::leave()
+            }
+
+            # Triangle workflow -- pull from one, push to another
+            subdir( 'triangle' );
+            util::execute( 'git init --bare upstream', rc => -1 );
+            util::execute( 'git clone upstream workdir', rc => -1 );
+            # creating commit and pushing to upstream
+            chdir( 'workdir' );
+            open( my $fh, '>>foo' );
+            close( $fh );
+            util::execute( 'git add foo', rc => -1 );
+            util::execute( 'git commit -m "foo" foo', rc => -1 );
+            util::execute( 'git push', rc => -1 );
+            chdir( '..' );
+            # setting up push repo
+            util::execute( 'git init --bare push', rc => -1 );
+            chdir( 'push' );
+            my $pushrepo = getcwd();
+            util::execute( 'git remote add push ' . $pushrepo, rc => -1 );
+            my $current = util::execute( 'git symbolic-ref --short HEAD', rc => -1, out => 1 );
+            util::execute( 'git config branch.' . $current . '.pushremote push', rc => -1 );
+            util::execute( 'git config push.default current', rc => -1 );
+            chdir( '..' );
+            # creating commit and pushing to push
+            chdir( 'workdir' );
+            open( $fh, '>>bar' );
+            close( $fh );
+            util::execute( 'git add bar', rc => -1 );
+            util::execute( 'git commit -m "bar" bar', rc => -1 );
+            util::execute( 'git push', rc => -1 );
+            # done
+            chdir( '../../..' );
+
+            # Multiple upstreams
+            subdir( 'upstreams' );
+            util::execute( 'git init --bare origin', rc => -1 );
+            util::execute( 'git init --bare upstream', rc => -1 );
+            util::execute( 'git clone origin workdir', rc => -1 );
+            chdir( 'upstream' );
+            my $upstream = getcwd();
+            chdir( '../workdir' );
+            util::execute( 'git remote add upstream ' . $upstream, rc => -1 );
+            # One commit to origin
+            open( $fh, '>>foo' );
+            close( $fh );
+            util::execute( 'git checkout -b origin', rc => -1 );
+            util::execute( 'git add foo', rc => -1 );
+            util::execute( 'git commit -m "foo" foo', rc => -1 );
+            util::execute( 'git push --set-upstream origin origin', rc => -1 );
+            # One commit to upstream2
+            util::execute( 'git checkout -b upstream', rc => -1 );
+            open( $fh, '>>bar' );
+            close( $fh );
+            util::execute( 'git add bar', rc => -1 );
+            util::execute( 'git commit -m "bar" bar', rc => -1 );
+            util::execute( 'git push --set-upstream upstream upstream', rc => -1 );
+            # done
+            chdir( '../../..' );
+
+            # Branches
+            subdir( 'branches' );
+            util::execute( 'git init --bare upstream', rc => -1 );
+            util::execute( 'git clone upstream workdir', rc => -1 );
+            # creating commit and pushing to upstream
+            chdir( 'workdir' );
+            open( $fh, '>>foo' );
+            close( $fh );
+            util::execute( 'git add foo', rc => -1 );
+            util::execute( 'git commit -m "foo" foo', rc => -1 );
+            util::execute( 'git push', rc => -1 );
+            # branch
+            util::execute( 'git switch -c branch', rc => -1 );
+            # creating commit and pushing to upstream
+            open( $fh, '>>bar' );
+            close( $fh );
+            util::execute( 'git add bar', rc => -1 );
+            util::execute( 'git commit -m "bar" bar', rc => -1 );
+            util::execute( 'git push --set-upstream origin branch', rc => -1 );
+            # done
+            chdir( '../../..' );
+
+            dbg::leave();
+        }
+    }
+
     # 'devel test' runs a list of regression tests.
     package devel::test
     {
@@ -1471,6 +1575,8 @@ Available subcommands are:
  * catalog  --  writes a file ‘i-default.catalog’ with localizable strings
 
  * qtd      --  testing function for util::qtd
+
+ * setup    --  creates a number of repositories for feature testing
 
  * test     --  runs a number of regression tests
 }};
