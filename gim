@@ -1384,6 +1384,7 @@ package devel
             my $fileworker = join( "|", sort grep( !/::/, @{ mro::get_isarev( 'fileworker' ) } ) );
             my $branchworker = join( "|", sort grep( !/::/, @{ mro::get_isarev( 'branchworker' ) } ) );
             my @devel = sort map( s/.*:://r, @{ mro::get_isarev( 'devel' ) } );
+            my @stash = sort map( s/.*:://r, @{ mro::get_isarev( 'stash' ) } );
             my @topics = sort keys %_topic;
             ( my $completion = qq{#!/usr/bin/env bash
 
@@ -1409,6 +1410,9 @@ package devel
                             $fileworker)
                                 compopt -o default
                                 COMPREPLY=()
+                                ;;
+                            stash)
+                                COMPREPLY+=(\$(compgen -W "@stash" -- "\$cur"))
                                 ;;
                             $branchworker)
                                 COMPREPLY+=(\$(compgen -W "\$(git for-each-ref --format="%(refname:strip=2)" refs/heads/*)" -- "\$cur"))
@@ -2534,6 +2538,155 @@ $_help{ 'rmbranch' } =
     usage => q{gim rmbranch <branch>
 },
     help => q{Delete a local branch.
+}};
+
+}
+
+###################################################################
+# 'stash' for local changes
+package stash
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        my $subcommand = util::subcommand();
+        $subcommand->run();
+        dbg::leave();
+        return ::E_OK;
+    }
+
+    package stash::apply
+    {
+        our @ISA = 'stash';
+
+        sub run()
+        {
+            dbg::enter();
+            my @args = util::qtd( @ARGV );
+            util::execute( "git stash apply @args", rc => 0, out => 0 );
+            dbg::leave();
+        }
+    }
+
+    package stash::branch
+    {
+        our @ISA = 'stash';
+
+        sub run()
+        {
+            dbg::enter();
+            my @args = util::qtd( @ARGV );
+            util::execute( "git stash branch @args", rc => 0, out => 0 );
+            dbg::leave();
+        }
+    }
+
+    package stash::clear
+    {
+        our @ISA = 'stash';
+
+        sub run()
+        {
+            dbg::enter();
+            my @args = util::qtd( @ARGV );
+            util::execute( "git stash clear @args", rc => 0, out => 0 );
+            dbg::leave();
+        }
+    }
+
+    package stash::drop
+    {
+        our @ISA = 'stash';
+
+        sub run()
+        {
+            dbg::enter();
+            my @args = util::qtd( @ARGV );
+            util::execute( "git stash drop @args", rc => 0, out => 0 );
+            dbg::leave();
+        }
+    }
+
+    package stash::list
+    {
+        our @ISA = 'stash';
+
+        sub run()
+        {
+            dbg::enter();
+            my @args = util::qtd( @ARGV );
+            util::execute( "git stash list @args", rc => 0, out => 0 );
+            dbg::leave();
+        }
+    }
+
+    package stash::pop
+    {
+        our @ISA = 'stash';
+
+        sub run()
+        {
+            dbg::enter();
+            my @args = util::qtd( @ARGV );
+            util::execute( "git stash pop @args", rc => 0, out => 0 );
+            dbg::leave();
+        }
+    }
+
+    package stash::push
+    {
+        our @ISA = 'stash';
+
+        sub run()
+        {
+            dbg::enter();
+            my @args = util::qtd( @ARGV );
+            util::execute( "git stash push @args", rc => 0, out => 0 );
+            dbg::leave();
+        }
+    }
+
+    package stash::show
+    {
+        our @ISA = 'stash';
+
+        sub run()
+        {
+            dbg::enter();
+            my @args = util::qtd( @ARGV );
+            util::execute( "git stash show @args", rc => 0, out => 0 );
+            dbg::leave();
+        }
+    }
+
+$_help{ 'stash' } =
+{
+    category => 'local',
+    about => 'Stash for local changes',
+    usage => q{gim stash <subcommand>
+},
+    help => q{Stash for local changes.
+
+The following subcommands are available:
+
+ * push   -- Push local commits on the stash stack.
+
+ * list   -- List the stash stack.
+
+ * show   -- Inspect one entry on the stash stack.
+
+ * drop   -- Remove an entry from the stash stack.
+
+ * clear  -- Remove all entries from the stash stack.
+
+ * apply  -- Apply an entry from the stash stack to the working directory.
+
+ * pop    -- As ‘apply’, but removes the entry from the stash stack if applying did not result in errors.
+
+ * branch -- Turn a stash entry into a new branch.
 }};
 
 }
