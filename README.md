@@ -1,0 +1,2 @@
+# gim
+Git for Mortals
