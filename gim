@@ -74,6 +74,7 @@ my $_REMOTE_COL   = $_RED;
 my $_URL_COL      = $_MAGENTA;
 my $_REF_COL      = $_CYAN;
 my $_SYMREF_COL   = $_GREEN;
+my $_LINE_COL     = $_MAGENTA;
 
 ###################################################################
 # Globals
@@ -1070,6 +1071,70 @@ local repository with the next commit.
 
 Directories specified as arguments will be added including their
 contents, recursively.
+}};
+
+}
+
+###################################################################
+# 'blame' identifies who made which changes to a source file
+package blame
+{
+    our @ISA = 'fileworker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        $self->init();
+        my $date = '';
+        my $regex = '([^ ]*) \((.*?) (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} .\d{4})\s*(\d*)\) (.*)';
+        Getopt::Long::GetOptions(
+            'relative|r' => sub {
+                $date = '--date=relative';
+                $regex = '([^ ]*) \((.*?) (\d+ [a-z]* [a-z]*)\s*(\d*)\) (.*)';
+            }
+        );
+        util::check_argv( 1, 1 );
+        my @args = util::qtd( @ARGV );
+        util::check_filespecs( ::E_NOTTRACKED, @args );
+        my $pager = util::pager();
+
+        my $blame = new executor( "git blame $date @args" );
+        my $last = '';
+        my $linecol = $_LINE_COL;
+
+        while ( $blame->readline() )
+        {
+            $_ =~ /$regex/;
+
+            if ( $1 ne $last )
+            {
+                $linecol = ( $linecol eq $_LINE_COL ) ? $_RESET : $_LINE_COL;
+            }
+
+            printf( $pager "%s%s%s %s%-15.15s%s %s%-15s%s %s%5d)%s  %s\n",
+                    $_HASH_COL, $1, $_RESET,
+                    $_NAME_COL, $2, $_RESET,
+                    $_TIME_COL, $3, $_RESET,
+                    $linecol, $4, $_RESET,
+                    $5
+                );
+
+            $last = $1;
+        }
+
+        $blame->close();
+        dbg::leave();
+        return ::E_OK;
+    }
+
+$_help{ 'blame' } =
+{
+    category => 'info',
+    about => 'Show who modified which line when',
+    usage => q{gim blame <file>
+},
+    help => q{Show who modified which line when.
 }};
 
 }
