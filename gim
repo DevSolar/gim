@@ -2652,8 +2652,7 @@ package push
             }
         }
 
-        # TODO: Branch exists on remote, error reporting
-        util::execute( $command, rc => 1, output => -1 );
+        util::execute( $command, rc => -1, output => -1 );
         dbg::leave();
         return ::E_OK;
     }
