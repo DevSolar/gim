@@ -2607,9 +2607,53 @@ package push
     {
         dbg::enter();
         my $self = shift( @_ );
-        util::check_argv( -1, 0 );
-        util::execute( 'git push --quiet', rc => -1, output => -1 );
         $self->init();
+        my $command = 'git push --quiet';
+        my $remote;
+        Getopt::Long::GetOptions(
+            'to|t=s' => \$remote
+        );
+        util::check_argv( -1, 0 );
+
+        if ( $self->{ 'repo_status' } == ::S_DETACHED )
+        {
+            util::throw( ::E_UNABLE, util::text( 'Error: Cannot push on an unnamed branch.' ) .
+                                     util::text( 'Try ‘[_1]’.', 'gim help push' )
+            );
+        }
+
+        my ( $upstream, $push ) = git::upstream( $self->{ 'current_branch' } );
+
+        if ( ! defined( $push ) )
+        {
+            if ( ! defined( $remote ) )
+            {
+                util::throw( ::E_SYNTAX, util::text( 'Error: Trying to push on a branch not existing on remote.' ) .
+                                         util::text( 'Try ‘[_1]’.', 'gim help push' )
+                );
+            }
+            else
+            {
+                my @remotes = split( "\n", util::execute( 'git remote show -n', rc => -1, out => 1 ) );
+
+                if ( ! grep( /^$remote$/, @remotes ) )
+                {
+                    util::throw( ::E_SYNTAX, util::text( 'Error: No such remote: ‘[_1]’.', $remote ) );
+                }
+
+                my @branches = split( "\n", util::execute( 'git branch --remotes --list --format=\'%(refname:lstrip=3)\' ' . $remote . '/*', rc => -1, out => 1 ) );
+
+                if ( grep( /^$self->{ 'current_branch' }$/, @branches ) )
+                {
+                    util::throw( ::E_SYNTAX, util::text( 'Error: ‘[_1]’ already exists on remote ‘[_2]’.', $self->{ 'current_branch' }, $remote ) );
+                }
+
+                $command .=  ' --set-upstream ' . $remote . ' ' . $self->{ 'current_branch' };
+            }
+        }
+
+        # TODO: Branch exists on remote, error reporting
+        util::execute( $command, rc => 1, output => -1 );
         dbg::leave();
         return ::E_OK;
     }
@@ -2618,13 +2662,23 @@ $_help{ 'push' } =
 {
     category => 'remote',
     about => 'Publish local commits',
-    usage => q{gim push
+    usage => q{gim push [--to | -t <remote>]
 },
     help => q{Publish local commits.
 
 Note that this means you cannot modify those commits any longer
 (without resorting to Git backend commands directly and running
 into potential problems).
+
+If you are working on an unnamed branch, you need to name that
+branch (‘gim mkbranch <branch>’) before you can push it.
+
+If the branch you are trying to push does not yet exist remotely,
+you need to specify the remote, even if there is only one remote
+currently configured. This is a safety feature.
+
+If the branch you are trying to push already exists on the remote,
+the push will fail.
 }};
 
 }
@@ -3062,7 +3116,7 @@ $_help{ 'switch' } =
 
 Use the ‘--detach’ / ‘-d’ option if you want to detach from
 existing branches. (Check ‘gim help topic detached’ for details
-on ‘detached HEAD’ state.)
+on “detached HEAD” state.)
 }};
 
 }
@@ -3241,7 +3295,7 @@ package update
         }
         else
         {
-            print( $pager util::text( 'Repository in ‘detached HEAD’ state, cannot update.' ) . "\n" );
+            print( $pager util::text( 'Repository in “detached HEAD” state, cannot update.' ) . "\n" );
         }
 
         bless( $self, 'status' );

@@ -10,7 +10,7 @@
 'Local repository up to date.'                => 'Lokales Repository ist aktuell.'
 'No unmerged changes.'                        => 'Keine nicht übernommenen Änderungen.'
 'No upstream.'                                => 'Kein Upstream.'
-'Repository in ‘detached HEAD’ state, cannot update.' => 'Repository im Zustand ‘detached HEAD’, kann nicht aktualisieren.'
+'Repository in “detached HEAD” state, cannot update.' => 'Repository im Zustand ‚detached HEAD‘, kann nicht aktualisieren.'
 'Stashed:'                                    => 'Stashed:'
 'Supported but not installed:'                => 'Unterstützt aber nicht installiert:'
 'Try ‘[_1]’.'                                 => 'Versuchen Sie ‚[_1]‘.'
@@ -22,24 +22,28 @@
 
 # Warning messages
 
-'Warning: Could not open debug output file ‘[_1]’.'               => 'Warnung: Konnte Debug-Ausgabedatei ‚[_1]’ nicht öffnen.'
+'Warning: Could not open debug output file ‘[_1]’.'               => 'Warnung: Konnte Debug-Ausgabedatei ‚[_1]‘ nicht öffnen.'
 'Warning: ‘[_1]’ is a symbolic link, which is not portable.'      => 'Warnung: ‚[_1]‘ ist ein symbolischer Link, was nicht portabel ist.'
 
 # Error messages
 
+'Error: Cannot push on an unnamed branch.'                        => 'Fehler: Kann nicht auf einen unbenannten Branch pushen.'
 'Error: Command ‘[_1]’ not executable.'                           => 'Fehler: Befehl ‚[_1]‘ nicht ausführbar.'
 'Error: Conflicting options ‘[_1]’ and ‘[_2]’.'                   => 'Fehler: Widersprüchliche Optionen ‚[_1]‘ and ‚[_2]‘.'
 'Error: Failed to execute ‘[_1]’.'                                => 'Fehler: Konnte ‚[_1]‘ nicht ausführen.'
 'Error: No subcommand given to ‘[_1]’.'                           => 'Fehler: Kein Unterbefehl für ‚[_1]‘.'
+'Error: No such remote: ‘[_1]’.'                                  => 'Fehler: Remote ‚[_1]‘ existiert nicht.'
 'Error: Too few arguments.'                                       => 'Fehler: Zu wenige Parameter.'
 'Error: Too many arguments.'                                      => 'Fehler: Zu viele Parameter.'
+'Error: Trying to push on a branch not existing on remote.'       => 'Fehler: Versuch auf einen Branch zu pushen der remote nicht existiert.'
 'Error: Unknown subcommand ‘[_1]’.'                               => 'Fehler: Unbekannter Unterbefehl ‚[_1]‘.'
 'Error: Unknown topic ‘[_1]’.'                                    => 'Fehler: Unbekanntes Thema ‚[_1]‘.'
-'Error: ‘[_1]’ already exists.'                                   => 'Fehler: ‘[_1]’ existiert bereits.'
-'Error: ‘[_1]’ interrupted by signal [_2] ‘[_3]’.'                => 'Fehler: ‘[_1]’ unterbrochen durch Signal [_2] ‘[_3]’.'
+'Error: ‘[_1]’ already exists on remote ‘[_2]’.'                  => 'Fehler: ‚[_1]‘ existiert bereits auf remote ‚[_2]‘.'
+'Error: ‘[_1]’ already exists.'                                   => 'Fehler: ‚[_1]‘ existiert bereits.'
+'Error: ‘[_1]’ interrupted by signal [_2] ‘[_3]’.'                => 'Fehler: ‚[_1]‘ unterbrochen durch Signal [_2] ‚[_3]‘.'
 'Error: ‘[_1]’ is neither regular file nor directory.'            => 'Fehler: ‚[_1]‘ ist weder reguläre Datei noch Verzeichnis.'
 'Error: ‘[_1]’ is not a regular file.'                            => 'Fehler: ‚[_1]‘ ist keine reguläre Datei.'
-'Error: ‘[_1]’ is not under version control.'                     => 'Fehler: ‘[_1]’ nicht unter Versionskontrolle.'
+'Error: ‘[_1]’ is not under version control.'                     => 'Fehler: ‚[_1]‘ nicht unter Versionskontrolle.'
 'Error: ‘[_1]’ requires a working copy.'                          => 'Fehler: ‚[_1]‘ erfordert ein Arbeitsverzeichnis.'
 
 # Categories
@@ -111,7 +115,7 @@ Verschiedene Funktionen für die Maintainer von gim.
 
 Verfügbare Unterbefehle:
 
- * catalog  --  Schreibt eine Datei “i-default.catalog” mit übersetzbaren Strings
+ * catalog  --  Schreibt eine Datei „i-default.catalog“ mit übersetzbaren Strings
 
  * qtd      --  Testfunktion für util::qtd
 
@@ -179,7 +183,7 @@ und pushed.
 Werden ein oder mehrere Remotes angegeben, wird statt der Liste lokaler
 Branches eine Liste der remote verfügbaren Branches angegeben.
 
-Die ‚--verbose’ / ‚-v’ Option führt zusätzlich den letzten Commit jedes
+Die ‚--verbose‘ / ‚-v‘ Option führt zusätzlich den letzten Commit jedes
 Branches auf.
 
 [init]
@@ -188,13 +192,13 @@ Erzeuge neues Repository
 
 Erzeuge ein neues Repository.
 
-Per Default wird ein „bare”-Repository erstellt, welches man dann
+Per Default wird ein „bare“-Repository erstellt, welches man dann
 an einen zugänglichen und sicheren Ort (wie einen Datei- / Web- /
 Cloud-Server) hochladen sollte. Anschließend kann man mit ‚gim clone‘
 einen Klon des Repositories mit Arbeitsverzeichnis anlegen. Dies ist
 das empfohlene Vorgehen.
 
-Mit der Option ‚--local’ (Kurzform ‚-l’) kann man direkt ein lokales
+Mit der Option ‚--local‘ (Kurzform ‚-l‘) kann man direkt ein lokales
 Repository mit Arbeitsverzeichnis anlegen, und ohne ein Upstream-
 Repository arbeiten.
 
@@ -210,21 +214,21 @@ Zeigt ein Commit-Log.
 Per Default wird ein einzeiliges Format angezeigt, das die relative
 Zeit, den Autor, den Commit-Kommentar, und Baum-Referenzen anzeigt.
 
-Mit der Option ‚--all’ / ‚-a’ wird das Default-Format mit absoluter
+Mit der Option ‚--all‘ / ‚-a‘ wird das Default-Format mit absoluter
 statt relativer Zeit verwendet, und der Commit-Hash mit angezeigt.
 
-Mit der Option ‚--graph’ / ‚-g’ wird ein Branch-Graph mit der Logausgabe
+Mit der Option ‚--graph‘ / ‚-g‘ wird ein Branch-Graph mit der Logausgabe
 verbunden.
 
 Die übrigen Optionen entsprechen vordefinierten Log-Formaten des Git
 Backends.
 
-Die Option ‚--reference’ / ‚-r’, ‚--short’ / ‚-s’, und ‚--medium’ / ‚-m’
-entsprechen den Optionen für ‚git log’ mit dem jeweiligen Namen.
+Die Option ‚--reference‘ / ‚-r‘, ‚--short‘ / ‚-s‘, und ‚--medium‘ / ‚-m‘
+entsprechen den Optionen für ‚git log‘ mit dem jeweiligen Namen.
 
-Die Option ‚--long’ / ‚-l’ entspricht ‚git log --full’.
+Die Option ‚--long‘ / ‚-l‘ entspricht ‚git log --full‘.
 
-Die Option ‚--verbose’ / ‚-v’ entspricht ‚git log --fuller’.
+Die Option ‚--verbose‘ / ‚-v‘ entspricht ‚git log --fuller‘.
 
 [merge]
 
@@ -253,6 +257,17 @@ Lokale Commits veröffentlichen.
 Veröffentliche commits können nicht weiter modifiziert werden,
 ohne auf Git-Backend-Befehle zuzugreifen und mögliche Probleme
 in Kauf zu nehmen.
+
+Wenn auf einen unbenannten Branch gearbeitet wird, muss diesem
+erst ein Name gegeben werden (‚gim mkbranch <branch>‘), bevor
+gepusht werden kann.
+
+Wenn der Branch der gepusht werden soll remote noch nicht existiert,
+muss der Remote explizit angegeben werden, selbst wenn nur ein Remote
+konfiguriert ist. Dies ist ein Sicherheitsfeature.
+
+Wenn der zu pushende Branch remote bereits existiert, schlägt der
+Push fehl.
 
 [revert]
 
@@ -292,7 +307,7 @@ Die folgenden Unterbefehle stehen zur Verfügung:
 
  * apply  -- Wende einen Eintrag vom Stash auf das Arbeitsverzeichnis an.
 
- * pop    -- Wie ‚apply’, aber entfernt den Eintrag vom Stash wenn das Anwenden erfolgreich war.
+ * pop    -- Wie ‚apply‘, aber entfernt den Eintrag vom Stash wenn das Anwenden erfolgreich war.
 
  * branch -- Wandle einen Eintrag vom Stash in einen neuen Branch um.
 
@@ -309,22 +324,26 @@ Upstream-Branch und (falls eingestellt) des Push-Branch.
 
 Eine Liste Commits, die bereits vom Upstream-Branch bezogen aber
 noch nicht eingepflegt wurden, sofern vorhanden. (Siehe ‚gim help
-update’ für Einzelheiten.)
+update‘ für Einzelheiten.)
 
 Eine Liste lokaler Commits, die noch nicht veröffentlicht wurden,
-sofern vorhanden. (Siehe ‚gim help push’ für Einzelheiten.)
+sofern vorhanden. (Siehe ‚gim help push‘ für Einzelheiten.)
 
 Eine Liste gestashter Änderungen, sofern vorhanden. (Siehe ‚gim
-help stash’ für Einzelheiten.)
+help stash‘ für Einzelheiten.)
 
 Eine Liste nicht committeter Änderungen, sofern vorhanden. (Siehe
-‚gim help commit’ für Einzelheiten.)
+‚gim help commit‘ für Einzelheiten.)
 
 [switch]
 
 Wechselt den lokalen Branch
 
 Wechselt den lokalen Branch.
+
+Mit der ‚--detach‘ / ‚-d‘ Option kann man sich von existierenden
+Branches lösen. (Siehe ‚gim help topic detached‘ für Einzelheiten
+zum „detached HEAD“ Zustand.)
 
 [tag]
 
@@ -344,8 +363,8 @@ Lokale Änderungen bleiben unangetastet.
 
 Standardmäßig fragt dies nach einer Bestätigung, unter Angabe des
 Commits den man im Begriff ist rückgängig zu machen und dem Commit
-auf den die Commit-Historie zurückgesetzt wird. Mit der ‚--yes’ /
-‚-y’ Option entfällt die Nachfrage.
+auf den die Commit-Historie zurückgesetzt wird. Mit der ‚--yes‘ /
+‚-y‘ Option entfällt die Nachfrage.
 
 [update]
 
@@ -369,29 +388,29 @@ ermöglichen soll.
 Voreingestellt ist hier ‚less‘. Sie können einen anderen Pager wählen,
 indem Sie die GIM_PAGER Umgebungsvariable setzen.
 
-Das ‚less’ Utility akzeptiert eine Vielzahl an Optionen, die dessen
+Das ‚less‘ Utility akzeptiert eine Vielzahl an Optionen, die dessen
 Verhalten kontrollieren. Diese Optionen können mit der Umgebungsvariable
 LESS global gesetzt werden. Ist diese Variable gesetzt, respektiert
 Gim dessen Einstellungen. Ist LESS nicht gesetzt, benutzt Gim die
-Optionen ‚--quit-if-one-screen’, ‚--quit-at-eof’, und ‚--RAW-CONTROL-CHARS’
-(‚-FeR’).
+Optionen ‚--quit-if-one-screen‘, ‚--quit-at-eof‘, und ‚--RAW-CONTROL-CHARS‘
+(‚-FeR‘).
 
 [detached]
 
 Detached HEAD / Unbenannter Branch
 
-Normalerweise ist ‚HEAD’ eine symbolische Referenz auf den letzten
-Commit des aktuellen Branch. Wenn man allerdings mit ‚gim switch’
-eine frühere Revision ausgewählt hat, hat man ‚HEAD’ von allen bereits
-existierenden Branches abgetrennt („detached”).
+Normalerweise ist ‚HEAD‘ eine symbolische Referenz auf den letzten
+Commit des aktuellen Branch. Wenn man allerdings mit ‚gim switch‘
+eine frühere Revision ausgewählt hat, hat man ‚HEAD‘ von allen bereits
+existierenden Branches abgetrennt („detached“).
 
 Wenn nun Änderungen an dieser früheren Revision vorgenommen und
 committed werden, wird damit ein neuer Branch basierend auf dieser
 Revision angelegt. Dieser Branch hat noch keinen Namen erhalten;
-Befehle wie ‚gim status’ werden statt dessen den gekürzten Hash der
-gewählten Revision als „Name” des aktuellen Branches anzeigen.
+Befehle wie ‚gim status‘ werden statt dessen den gekürzten Hash der
+gewählten Revision als „Name“ des aktuellen Branches anzeigen.
 
-Diese Umstände nennt man „detached HEAD” oder „unbenannter Branch”.
+Diese Umstände nennt man „detached HEAD“ oder „unbenannter Branch“.
 
 Man kann entweder den Branch benennenn (TODO), oder ihn mit ‚gim
-switch’ aufgeben.
+switch‘ aufgeben.
