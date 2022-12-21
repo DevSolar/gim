@@ -768,7 +768,7 @@ package util
     sub subcommand()
     {
         dbg::enter();
-        my $subcommand = shift( @ARGV );
+        my $subcommand = shift( @ARGV ) // '';
         my $caller = caller(0);
         my $help_hint;
         my $command;
@@ -788,7 +788,7 @@ package util
             $package = $caller . '::' . $subcommand;
         }
 
-        if ( ! defined( $subcommand ) )
+        if ( $subcommand eq '' )
         {
             util::throw( ::E_SUB_MISSING, util::text( 'Error: No subcommand given to ‘[_1]’.', $command ) .
                                           util::text( 'Try ‘[_1]’.', 'gim help' . $help_hint ) );
@@ -2678,6 +2678,80 @@ currently configured. This is a safety feature.
 
 If the branch you are trying to push already exists on the remote,
 the push will fail.
+}};
+
+}
+
+###################################################################
+# 'remote' adding, removing, etc.
+package remote
+{
+    our @ISA = 'worker';
+
+    sub run()
+    {
+        dbg::enter();
+        my $self = shift( @_ );
+        my $subcommand = util::subcommand();
+        $subcommand->run();
+        dbg::leave();
+        return ::E_OK;
+    }
+
+    package remote::add
+    {
+        our @ISA = 'remote';
+
+        sub run()
+        {
+            dbg::enter();
+            my @args = util::qtd( @ARGV );
+            util::execute( "git remote add @args", rc => 0, out => 0 );
+            dbg::leave();
+        }
+    }
+
+    package remote::remove
+    {
+        our @ISA = 'remote';
+
+        sub run()
+        {
+            dbg::enter();
+            my @args = util::qtd( @ARGV );
+            util::execute( "git remote remove @args", rc => 0, out => 0 );
+            dbg::leave();
+        }
+    }
+
+    package remote::rename
+    {
+        our @ISA = 'remote';
+
+        sub run()
+        {
+            dbg::enter();
+            my @args = util::qtd( @ARGV );
+            util::execute( "git remote rename @args", rc => 0, out => 0 );
+            dbg::leave();
+        }
+    }
+
+$_help{ 'remote' } =
+{
+    category => 'remote',
+    about => 'Handle remotes',
+    usage => q{gim remote <subcommand>
+},
+    help => q{Handle remotes.
+
+The following subcommands are available:
+
+ * add    -- Add a remote.
+
+ * remove -- Remove a remote.
+
+ * rename -- Rename a remote.
 }};
 
 }

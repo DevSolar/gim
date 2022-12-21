@@ -269,6 +269,20 @@ konfiguriert ist. Dies ist ein Sicherheitsfeature.
 Wenn der zu pushende Branch remote bereits existiert, schlägt der
 Push fehl.
 
+[remote]
+
+Verwalte Remotes
+
+Verwalte Remotes.
+
+Die folgenden Unterbefehle sind verfügbar:
+
+ * add    -- Ein Remote hinzufügen.
+
+ * remove -- Ein Remote entfernen.
+
+ * rename -- Ein Remote umbenennen.
+
 [revert]
 
 Macht lokale Änderung rückgängig
