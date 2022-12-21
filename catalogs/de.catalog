@@ -27,15 +27,15 @@
 
 # Error messages
 
-'Error: Cannot push on an unnamed branch.'                        => 'Fehler: Kann nicht auf einen unbenannten Branch pushen.'
+'Error: Cannot push an unnamed branch.'                           => 'Fehler: Unbenannter Branch kann nicht gepusht werden.'
 'Error: Command ‘[_1]’ not executable.'                           => 'Fehler: Befehl ‚[_1]‘ nicht ausführbar.'
 'Error: Conflicting options ‘[_1]’ and ‘[_2]’.'                   => 'Fehler: Widersprüchliche Optionen ‚[_1]‘ and ‚[_2]‘.'
 'Error: Failed to execute ‘[_1]’.'                                => 'Fehler: Konnte ‚[_1]‘ nicht ausführen.'
 'Error: No subcommand given to ‘[_1]’.'                           => 'Fehler: Kein Unterbefehl für ‚[_1]‘.'
-'Error: No such remote: ‘[_1]’.'                                  => 'Fehler: Remote ‚[_1]‘ existiert nicht.'
+'Error: Unknown remote: ‘[_1]’.'                                  => 'Fehler: Remote ‚[_1]‘ existiert nicht.'
 'Error: Too few arguments.'                                       => 'Fehler: Zu wenige Parameter.'
 'Error: Too many arguments.'                                      => 'Fehler: Zu viele Parameter.'
-'Error: Trying to push on a branch not existing on remote.'       => 'Fehler: Versuch auf einen Branch zu pushen der remote nicht existiert.'
+'Error: No remote to push to.'                                    => 'Fehler: Kein Remote zum pushen.'
 'Error: Unknown subcommand ‘[_1]’.'                               => 'Fehler: Unbekannter Unterbefehl ‚[_1]‘.'
 'Error: Unknown topic ‘[_1]’.'                                    => 'Fehler: Unbekanntes Thema ‚[_1]‘.'
 'Error: ‘[_1]’ already exists on remote ‘[_2]’.'                  => 'Fehler: ‚[_1]‘ existiert bereits auf remote ‚[_2]‘.'

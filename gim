@@ -2617,7 +2617,7 @@ package push
 
         if ( $self->{ 'repo_status' } == ::S_DETACHED )
         {
-            util::throw( ::E_UNABLE, util::text( 'Error: Cannot push on an unnamed branch.' ) .
+            util::throw( ::E_UNABLE, util::text( 'Error: Cannot push an unnamed branch.' ) .
                                      util::text( 'Try ‘[_1]’.', 'gim help push' )
             );
         }
@@ -2628,7 +2628,7 @@ package push
         {
             if ( ! defined( $remote ) )
             {
-                util::throw( ::E_SYNTAX, util::text( 'Error: Trying to push on a branch not existing on remote.' ) .
+                util::throw( ::E_SYNTAX, util::text( 'Error: No remote to push to.' ) .
                                          util::text( 'Try ‘[_1]’.', 'gim help push' )
                 );
             }
@@ -2638,7 +2638,7 @@ package push
 
                 if ( ! grep( /^$remote$/, @remotes ) )
                 {
-                    util::throw( ::E_SYNTAX, util::text( 'Error: No such remote: ‘[_1]’.', $remote ) );
+                    util::throw( ::E_SYNTAX, util::text( 'Error: Unknown remote: ‘[_1]’.', $remote ) );
                 }
 
                 my @branches = split( "\n", util::execute( 'git branch --remotes --list --format=\'%(refname:lstrip=3)\' ' . $remote . '/*', rc => -1, out => 1 ) );
