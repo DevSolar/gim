@@ -1450,6 +1450,7 @@ package devel
             my $branchworker = join( "|", sort grep( !/::/, @{ mro::get_isarev( 'branchworker' ) } ) );
             my @devel = sort map( s/.*:://r, @{ mro::get_isarev( 'devel' ) } );
             my @stash = sort map( s/.*:://r, @{ mro::get_isarev( 'stash' ) } );
+            my @tag = sort map( s/.*:://r, @{ mro::get_isarev( 'tag' ) } );
             my @topics = sort keys %_topic;
             ( my $completion = qq{#!/usr/bin/env bash
 
@@ -1478,6 +1479,9 @@ package devel
                                 ;;
                             stash)
                                 COMPREPLY+=(\$(compgen -W "@stash" -- "\$cur"))
+                                ;;
+                            tag)
+                                COMPREPLY+=(\$(compgen -W "@tag" -- "\$cur"))
                                 ;;
                             $branchworker)
                                 COMPREPLY+=(\$(compgen -W "\$(git for-each-ref --format="%(refname:strip=2)" refs/heads/*)" -- "\$cur"))
@@ -2608,7 +2612,7 @@ package push
         dbg::enter();
         my $self = shift( @_ );
         $self->init();
-        my $command = 'git push --quiet';
+        my $command = 'git push --follow-tags --quiet';
         my $remote;
         Getopt::Long::GetOptions(
             'to|t=s' => \$remote
@@ -3206,10 +3210,75 @@ package tag
         my $self = shift( @_ );
         util::check_argv( 1, -1 );
         $self->init();
-        my @args = util::qtd( @ARGV );
-        util::execute( "git tag @args", rc => -1 );
+        my $subcommand = util::subcommand();
+        $subcommand->run();
         dbg::leave();
         return ::E_OK;
+    }
+
+    package tag::add
+    {
+        our @ISA = 'tag';
+
+        sub run()
+        {
+            dbg::enter();
+            my $command = 'git tag -a';
+            my $file;
+            my $msg;
+            Getopt::Long::GetOptions(
+                'file|F=s'    => \$file,
+                'message|m=s' => \$msg
+            );
+
+            if ( defined( $file ) && defined( $msg ) )
+            {
+                util::throw( ::E_SYNTAX, util::text( 'Error: Conflicting options ‘[_1]’ and ‘[_2]’.', '--file', '--message' ) );
+            }
+
+            if ( defined( $file ) )
+            {
+                util::check_filespecs( ::E_NOTFILE, $file );
+                ( $file ) = util::qtd( $file );
+                $command .= " --file $file";
+            }
+
+            if ( defined( $msg ) )
+            {
+                ( $msg ) = util::qtd( $msg );
+                $command .= " --message $msg";
+            }
+
+            my @args = util::qtd( @ARGV );
+            util::execute( $command . " @args", rc => -1, out => -1 );
+            dbg::leave();
+        }
+    }
+
+    package tag::delete
+    {
+        our @ISA = 'tag';
+
+        sub run()
+        {
+            dbg::enter();
+            my @args = util::qtd( @ARGV );
+            util::execute( "git tag -d @args", rc => -1, out => -1 );
+            dbg::leave();
+        }
+    }
+
+    package tag::list
+    {
+        our @ISA = 'tag';
+
+        sub run()
+        {
+            dbg::enter();
+            my @args = util::qtd( @ARGV );
+            util::execute( "git tag -l @args", rc => -1, out => -1 );
+            dbg::leave();
+        }
     }
 
 $_help{ 'tag' } =
@@ -3219,6 +3288,14 @@ $_help{ 'tag' } =
     usage => q{gim tag ...
 },
     help => q{Tag commits.
+
+The following subcommands are available:
+
+ * add    -- Add a tag.
+
+ * delete -- Delete a tag.
+
+ * list   -- List tags.
 }};
 
 }
