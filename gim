@@ -75,6 +75,7 @@ my $_URL_COL      = $_MAGENTA;
 my $_REF_COL      = $_CYAN;
 my $_SYMREF_COL   = $_GREEN;
 my $_LINE_COL     = $_MAGENTA;
+my $_TAG_COL      = $_YELLOW;
 
 ###################################################################
 # Globals
@@ -1460,6 +1461,7 @@ package devel
                 local cur prev
                 cur="\${COMP_WORDS[COMP_CWORD]}"
                 prev="\${COMP_WORDS[COMP_CWORD-1]}"
+                pprev="\${COMP_WORDS[COMP_CWORD-2]}"
 
                 case \${#COMP_WORDS[@]} in
                     2)
@@ -1473,15 +1475,15 @@ package devel
                             devel)
                                 COMPREPLY+=(\$(compgen -W "@devel" -- "\$cur"))
                                 ;;
-                            $fileworker)
-                                compopt -o default
-                                COMPREPLY=()
-                                ;;
                             stash)
                                 COMPREPLY+=(\$(compgen -W "@stash" -- "\$cur"))
                                 ;;
                             tag)
                                 COMPREPLY+=(\$(compgen -W "@tag" -- "\$cur"))
+                                ;;
+                            $fileworker)
+                                compopt -o default
+                                COMPREPLY=()
                                 ;;
                             $branchworker)
                                 COMPREPLY+=(\$(compgen -W "\$(git for-each-ref --format="%(refname:strip=2)" refs/heads/*)" -- "\$cur"))
@@ -1489,9 +1491,15 @@ package devel
                         esac
                         ;;
                     4)
-                        case \$prev in
-                            topic)
-                                COMPREPLY+=(\$(compgen -W "@topics" -- "\$cur"))
+                        case \$pprev in
+                            help)
+                                case \$prev in
+                                    topic)
+                                        COMPREPLY+=(\$(compgen -W "@topics" -- "\$cur"))
+                                        ;;
+                                    *)
+                                        ;;
+                                esac
                                 ;;
                             *)
                                 compopt -o default
@@ -3202,7 +3210,7 @@ on “detached HEAD” state.)
 # 'tag' commits
 package tag
 {
-    our @ISA = 'fileworker';
+    our @ISA = 'worker';
 
     sub run()
     {
@@ -3275,8 +3283,49 @@ package tag
         sub run()
         {
             dbg::enter();
-            my @args = util::qtd( @ARGV );
-            util::execute( "git tag -l @args", rc => -1, out => -1 );
+            my $all;
+            Getopt::Long::GetOptions(
+                'all|a' => \$all,
+            );
+            my @args = ();
+
+            if ( @ARGV )
+            {
+                foreach ( @ARGV )
+                {
+                    push( @args, util::qtd( "refs/tags/$_" ) );
+                }
+            }
+            else
+            {
+                @args = ( "refs/tags/*" );
+            }
+
+            my $pager = util::pager();
+            my $list = new executor( "git for-each-ref --sort=-taggerdate --format='%(objectname)\x{1f}%(*objectname:short=8)\x{1f}%(taggerdate:iso)\x{1f}%(taggerdate:relative)\x{1f}%(taggername)\x{1f}%(taggeremail)\x{1f}%(refname:lstrip=2)\x{1f}%(contents:subject)\x{1f}%(contents:body)' @args" );
+
+            while ( $list->readline() )
+            {
+                my ( $taghash, $hash, $time_iso, $time_rel, $name, $mail, $tag, $subject, $body ) = split( '\x{1f}' );
+
+                if ( $hash eq '' )
+                {
+                    # Lightweight tags have no hash of their own
+                    # so the object hash *is* already the commit
+                    $hash = $taghash;
+                }
+
+                if ( defined( $all ) )
+                {
+                    printf( $pager "$_TIME_COL%25s$_RESET  $_HASH_COL%.8s$_RESET  $_NAME_COL%-15s$_RESET  %s  ($_TAG_COL%s$_RESET)\n", $time_iso, $hash, $name, $subject, $tag );
+                }
+                else
+                {
+                    printf( $pager "$_TIME_COL%15s$_RESET  $_NAME_COL%-15s$_RESET  %s  ($_TAG_COL%s$_RESET)\n", $time_rel, $name, $subject, $tag );
+                }
+            }
+
+            $list->close();
             dbg::leave();
         }
     }
@@ -3284,18 +3333,56 @@ package tag
 $_help{ 'tag' } =
 {
     category => 'local',
-    about => 'Tag commits',
-    usage => q{gim tag ...
+    about => 'Handle commit tags',
+    usage => q{gim tag add [--message | -m <msg>] <tag> [<revspec>]
+    gim tag add [--file | -F <filename>] <tag> [<revspec>]
+    gim tag add --light | -l <tag> [<revspec>]
+
+    gim tag delete <tag>
+    gim tag list [--all | -a] <pattern>
 },
-    help => q{Tag commits.
+    help => q{Handle commit tags.
+
+A tag is an alias applied to an existing commit. It allows to
+refer to that specific commit by its symbolic tag name, so you
+do not have to refer to its hash value anymore.
+
+There are two different kinds of tags: Annotated, meaning these
+are given a message similar to a commit message; and lightweight,
+which are not given such a message. Within Gim we use lightweight
+tags for local use only and never push them to remotes, whereas
+annotated tags are always pushed.
+
+Note that this is a Gim convention only.
 
 The following subcommands are available:
 
  * add    -- Add a tag.
 
+Without options, an editor is opened for you to enter the tag
+message. With the ‘--file’ / ‘-F’ option, the contents of the
+file specified will be used as tag message. With the ‘--message’ /
+‘-m’ option, the passed string is used as the tag message.
+
+With the ‘--light’ / ‘-l’ option, no tag message is given, and
+a lightweight tag is created.
+
+For each of these commands, you need to specify the tag name. By
+default that tag name is applied to the HEAD commit. You may
+specify a different commit (through its hash value or an already
+existing other tag) to apply the tag to.
+
  * delete -- Delete a tag.
 
  * list   -- List tags.
+
+Lists tags similar to ‘git log’. By default, shows a one-line
+format containing relative time, tagger information, tag summary,
+and tag name.
+
+With the ‘--all’ / ’-a’ option, the default one-line format is
+changed to show absolute timestamps instead of relative, and will
+list the abbreviated hash of the tagged commit as well.
 }};
 
 }

@@ -31,11 +31,11 @@
 'Error: Command ‘[_1]’ not executable.'                           => 'Fehler: Befehl ‚[_1]‘ nicht ausführbar.'
 'Error: Conflicting options ‘[_1]’ and ‘[_2]’.'                   => 'Fehler: Widersprüchliche Optionen ‚[_1]‘ and ‚[_2]‘.'
 'Error: Failed to execute ‘[_1]’.'                                => 'Fehler: Konnte ‚[_1]‘ nicht ausführen.'
+'Error: No remote to push to.'                                    => 'Fehler: Kein Remote zum pushen.'
 'Error: No subcommand given to ‘[_1]’.'                           => 'Fehler: Kein Unterbefehl für ‚[_1]‘.'
-'Error: Unknown remote: ‘[_1]’.'                                  => 'Fehler: Remote ‚[_1]‘ existiert nicht.'
 'Error: Too few arguments.'                                       => 'Fehler: Zu wenige Parameter.'
 'Error: Too many arguments.'                                      => 'Fehler: Zu viele Parameter.'
-'Error: No remote to push to.'                                    => 'Fehler: Kein Remote zum pushen.'
+'Error: Unknown remote: ‘[_1]’.'                                  => 'Fehler: Remote ‚[_1]‘ existiert nicht.'
 'Error: Unknown subcommand ‘[_1]’.'                               => 'Fehler: Unbekannter Unterbefehl ‚[_1]‘.'
 'Error: Unknown topic ‘[_1]’.'                                    => 'Fehler: Unbekanntes Thema ‚[_1]‘.'
 'Error: ‘[_1]’ already exists on remote ‘[_2]’.'                  => 'Fehler: ‚[_1]‘ existiert bereits auf remote ‚[_2]‘.'
@@ -361,9 +361,53 @@ zum „detached HEAD“ Zustand.)
 
 [tag]
 
-Bringe Tags and Commits an
+Verwalte Commit-Tags
 
-Bringe Tags and Commits an.
+Behandle Commit-Tags.
+
+
+Ein Tag ist ein Alias für einen existierenden Commit. Es erlaubt
+den Zugriff auf diesen spezifischen Commit durch einen symbolischen
+Namen anstelle des Hash-Werts.
+
+Es gibt zwei unterschiedliche Arten von Tags: Kommentierte Tags,
+das heißt das Tag wurde mit einem Kommentar ähnlich jenem an einem
+Commit versehen; und Leichtgewicht-Tags ohne solchen Kommentar.
+Innerhalb von Gim benutzen wir Leichtgewicht-Tags ausschließlich
+für lokale Zwecke, und pushen diese nie in die Remotes, während
+kommentierte Tags immer gepusht werden.
+
+Dies ist lediglich eine Gim-Konvention.
+
+Die folgenden Unterbefehle sind verfügbar:
+
+ * add    -- Ein Tag hinzufügen.
+
+Ohne Optionen wird ein Editor geöffnet, in dem der Tag-Kommentar
+eingegeben werden kann. Mit der ‚--file‘ / ‚-F‘ Option wird der
+Inhalt der angegebenen Datei als Tag-Kommentar verwendet. Mit der
+‚--message‘ / ‚-m‘ Option wird der angegebene String als
+Tag-Kommentar verwendet.
+
+Mit der ‚--light‘ / ‚-l‘ Option, wird kein Tag-Kommentar angegeben
+und ein Leichtgewicht-Tag erzeugt.
+
+Für jeden dieser Befehle muss der Name des Tags angegben werden.
+Per Default wird das Tag auf den HEAD-Commit angewendet. Man kann
+einen anderen Commit angeben (durch dessen Hash-Wert oder ein
+bereits existierendes anderes Tag) und das Tag darauf anwenden.
+
+ * delete -- Einen Tag löschen.
+
+ * list   -- Tags auflisten.
+
+Listet Tags auf, vergleichbar mit ‚gim log‘. Per Default wird
+ein einzeiliges Format verwendet, das die relative Zeit, den
+Tagger, Tag-Kommentar, und Tag-Namen anzeigt.
+
+Mit der ‚--all‘ / ‚-a‘ Option wird das Default-Format verändert
+und die absolute Zeit statt der relativen Zeit angezeigt, und
+dazu der Hash des getaggten Commits.
 
 [uncommit]
 
