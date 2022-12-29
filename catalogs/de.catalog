@@ -37,6 +37,7 @@
 'Error: Too many arguments.'                                      => 'Fehler: Zu viele Parameter.'
 'Error: Unknown remote: ‘[_1]’.'                                  => 'Fehler: Remote ‚[_1]‘ existiert nicht.'
 'Error: Unknown subcommand ‘[_1]’.'                               => 'Fehler: Unbekannter Unterbefehl ‚[_1]‘.'
+'Error: Unknown tag: ‘[_1]’.'                                     => 'Fehler: Unbekanntes Tag: ‚[_1]‘.'
 'Error: Unknown topic ‘[_1]’.'                                    => 'Fehler: Unbekanntes Thema ‚[_1]‘.'
 'Error: ‘[_1]’ already exists on remote ‘[_2]’.'                  => 'Fehler: ‚[_1]‘ existiert bereits auf remote ‚[_2]‘.'
 'Error: ‘[_1]’ already exists.'                                   => 'Fehler: ‚[_1]‘ existiert bereits.'

@@ -2194,6 +2194,7 @@ package info
             foreach ( @ARGV )
             {
                 my $remote = $_;
+
                 if ( ! grep( /^$remote$/, @remotes ) )
                 {
                     util::throw( ::E_SYNTAX, util::text( "Error: No such remote: ‘[_1]’.", $_ ) );
@@ -3280,7 +3281,19 @@ package tag
         {
             dbg::enter();
             my @args = util::qtd( @ARGV );
-            util::execute( "git tag -d @args", rc => -1, out => -1 );
+            my @tags = split( ' ', util::execute( 'git tag -l', rc => -1, out => 1 ) );
+
+            foreach ( @args )
+            {
+                my $tag = $_;
+
+                if ( ! grep( /^$tag$/, @tags ) )
+                {
+                    util::throw( ::E_SYNTAX, util::text( 'Error: Unknown tag: ‘[_1]’.', $_ ) );
+                }
+            }
+
+            util::execute( "git tag -d @args", rc => -1 );
             dbg::leave();
         }
     }
