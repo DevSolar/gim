@@ -1698,6 +1698,7 @@ package devel
             close( $fh );
             util::execute( 'git add foo', rc => -1 );
             util::execute( 'git commit -m "foo" foo', rc => -1 );
+            util::execute( 'git tag -a -m "foo_msg" foo_tag', rc => -1 );
             util::execute( 'git push', rc => -1 );
             # branch
             util::execute( 'git switch -c branch', rc => -1 );
@@ -1706,6 +1707,8 @@ package devel
             close( $fh );
             util::execute( 'git add bar', rc => -1 );
             util::execute( 'git commit -m "bar" bar', rc => -1 );
+            util::execute( 'git tag -a -m "bar_msg" bar_tag', rc => -1 );
+            util::execute( 'git tag light_tag', rc => -1 );
             util::execute( 'git push --set-upstream origin branch', rc => -1 );
             # done
             chdir( '../../..' );
@@ -3270,17 +3273,32 @@ package tag
         sub run()
         {
             dbg::enter();
-            my $command = 'git tag -a';
+            my $command = 'git tag';
             my $file;
             my $msg;
+            my $light;
             Getopt::Long::GetOptions(
                 'file|F=s'    => \$file,
-                'message|m=s' => \$msg
+                'message|m=s' => \$msg,
+                'light|l'     => \$light
             );
+            util::check_argv( 1, 1 );
 
             if ( defined( $file ) && defined( $msg ) )
             {
                 util::throw( ::E_SYNTAX, util::text( 'Error: Conflicting options ‘[_1]’ and ‘[_2]’.', '--file', '--message' ) );
+            }
+
+            if ( defined( $light ) )
+            {
+                if ( defined( $file ) || defined( $msg ) )
+                {
+                    util::throw( ::E_SYNTAX, util::text( 'Error: Conflicting options ‘[_1]’ and ‘[_2]’.', '--light', ( defined( $file ) ? '--file' : '--message' ) ) );
+                }
+            }
+            else
+            {
+                $command .= ' -a';
             }
 
             if ( defined( $file ) )
@@ -3354,6 +3372,10 @@ package tag
                     # Lightweight tags have no hash of their own
                     # so the object hash *is* already the commit
                     $hash = $taghash;
+                    # Also, their contents:subject is that of the
+                    # tagged commit (obviously).
+                    $subject = "\b\b";
+                    $body = '';
                 }
 
                 if ( defined( $all ) )
