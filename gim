@@ -237,6 +237,15 @@ package git
         return @remotes;
     }
 
+    # Get a list of tags
+    sub tags()
+    {
+        dbg::enter();
+        my @tags = split( "\n", util::execute( 'git tag -l', rc => -1, out => 1 ) );
+        return @tags;
+        dbg::leave();
+    }
+
     # Get a list of uncommitted changes in working directory
     sub uncommitted()
     {
@@ -3281,7 +3290,7 @@ package tag
         {
             dbg::enter();
             my @args = util::qtd( @ARGV );
-            my @tags = split( ' ', util::execute( 'git tag -l', rc => -1, out => 1 ) );
+            my @tags = git::tags();
 
             foreach ( @args )
             {
