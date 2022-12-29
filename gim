@@ -508,7 +508,7 @@ package util
         dbg::leave();
     }
 
-    # Check that the list of arguments violates a predicate given
+    # Check if the list of arguments violates a predicate given
     # as first parameter. Returns if all arguments check out,
     # throws otherwise. Generates warnings for symbolic links,
     # which are not portable across platforms.
@@ -614,6 +614,26 @@ package util
 
         dbg::leave();
         return $rc;
+    }
+
+    # Check that the list of arguments exists as tags in the repo.
+    # Returns if all arguments check out, throws otherwise.
+    sub check_tags(@)
+    {
+        dbg::enter();
+        my @tags = git::tags();
+
+        foreach ( @_ )
+        {
+            my $tag = $_;
+
+            if ( ! grep( /^$tag$/, @tags ) )
+            {
+                util::throw( ::E_SYNTAX, util::text( 'Error: Unknown tag: ‘[_1]’.', $_ ) );
+            }
+        }
+
+        dbg::leave();
     }
 
     # Request confirmation from user.
@@ -3289,19 +3309,9 @@ package tag
         sub run()
         {
             dbg::enter();
+            util::check_argv( 1, -1 );
             my @args = util::qtd( @ARGV );
-            my @tags = git::tags();
-
-            foreach ( @args )
-            {
-                my $tag = $_;
-
-                if ( ! grep( /^$tag$/, @tags ) )
-                {
-                    util::throw( ::E_SYNTAX, util::text( 'Error: Unknown tag: ‘[_1]’.', $_ ) );
-                }
-            }
-
+            util::check_tags( @args );
             util::execute( "git tag -d @args", rc => -1 );
             dbg::leave();
         }
