@@ -1501,6 +1501,15 @@ package devel
                                         ;;
                                 esac
                                 ;;
+                            tag)
+                                case \$prev in
+                                    delete|list)
+                                        COMPREPLY+=(\$(compgen -W "\$(git tag -l | tr '\\n' ' ')" -- "\$cur"))
+                                        ;;
+                                    *)
+                                        ;;
+                                esac
+                                ;;
                             *)
                                 compopt -o default
                                 COMPREPLY=()
