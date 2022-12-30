@@ -717,7 +717,7 @@ package util
     # If the environment variable GIM_PAGER is set, that will be
     # the pager used.
     # The default pager is 'less'. If the LESS environment variable
-    # is set, it will be used; else the '-FeRS' options will be set.
+    # is set, it will be used; else the '-FeRSX' options will be set.
     # Note that Git's core.pager is NOT honored.
     sub pager()
     {
@@ -742,7 +742,7 @@ package util
                     }
                     else
                     {
-                        $cmd = 'less -FeRS';
+                        $cmd = 'less -FeRSX';
                     }
                 }
             }
@@ -1698,7 +1698,6 @@ package devel
             close( $fh );
             util::execute( 'git add foo', rc => -1 );
             util::execute( 'git commit -m "foo" foo', rc => -1 );
-            util::execute( 'git tag -a -m "foo_msg" foo_tag', rc => -1 );
             util::execute( 'git push', rc => -1 );
             # branch
             util::execute( 'git switch -c branch', rc => -1 );
@@ -1707,9 +1706,37 @@ package devel
             close( $fh );
             util::execute( 'git add bar', rc => -1 );
             util::execute( 'git commit -m "bar" bar', rc => -1 );
-            util::execute( 'git tag -a -m "bar_msg" bar_tag', rc => -1 );
-            util::execute( 'git tag light_tag', rc => -1 );
             util::execute( 'git push --set-upstream origin branch', rc => -1 );
+            # done
+            chdir( '../../..' );
+
+            # Tags
+            subdir( 'tags' );
+            util::execute( 'git init --bare upstream', rc => -1 );
+            util::execute( 'git clone upstream workdir', rc => -1 );
+            # creating commit and pushing to upstream
+            chdir( 'workdir' );
+            open( $fh, '>>foo' );
+            close( $fh );
+            util::execute( 'git add foo', rc => -1 );
+            util::execute( 'git commit -m "foo" foo', rc => -1 );
+            util::execute( 'git tag -a -m "foo_msg" foo_tag', rc => -1 );
+            open( $fh, '>>foo' );
+            print( $fh '1' );
+            close( $fh );
+            util::execute( 'git commit -m "foo1" foo', rc => -1 );
+            util::execute( 'git tag -a -m "foo1_msg" foo1_tag', rc => -1 );
+            open( $fh, '>>foo' );
+            print( $fh '2' );
+            close( $fh );
+            util::execute( 'git commit -m "foo2" foo', rc => -1 );
+            util::execute( 'git tag -a -m "foo2_msg" foo2_tag', rc => -1 );
+            util::execute( 'git tag light_tag', rc => -1 );
+            open( $fh, '>>foo' );
+            print( $fh '3' );
+            close( $fh );
+            util::execute( 'git commit -m "foo3" foo', rc => -1 );
+            util::execute( 'git push --follow-tags', rc => -1 );
             # done
             chdir( '../../..' );
 
@@ -1923,7 +1950,7 @@ package diff # TODO: Handling and documentation of @ARGV
             }
             else
             {
-                my $opts = "-U3 -W";
+                my $opts = "-U3";
 
                 if ( exists( $ENV{ GIM_DIFFOPTS } ) )
                 {
@@ -3636,8 +3663,8 @@ The ‘less’ utility accepts a number of options controlling its
 behavior. These options can be set globally by setting the LESS
 environment variable. If this variable is set, Gim respects its
 setting. If LESS is not set, Gim will use ‘--quit-if-one-screen’,
-‘--quit-at-eof’, ‘--RAW-CONTROL-CHARS’, and ‘--chop-long-lines’
-(‘-FeRS’).
+‘--quit-at-eof’, ‘--RAW-CONTROL-CHARS’, ‘--chop-long-lines’, and
+‘--no-init’ (‘-FeRSX’).
 }};
 
 ###################################################################
