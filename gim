@@ -1515,7 +1515,7 @@ package devel
                                 COMPREPLY=()
                                 ;;
                             $branchworker)
-                                COMPREPLY+=(\$(compgen -W "\$(git for-each-ref --format="%(refname:strip=2)" refs/heads/*)" -- "\$cur"))
+                                COMPREPLY+=(\$(compgen -W "\$(git for-each-ref --format="%(refname:strip=2)" refs/heads/**)" -- "\$cur"))
                                 ;;
                         esac
                         ;;
