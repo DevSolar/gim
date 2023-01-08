@@ -3263,7 +3263,7 @@ package switch
             util::throw( ::E_SYNTAX, util::text( 'Error: ‘[_1]’ is a commit, not a branch. Forgot ‘--detach’?', $branch ) .
                                      util::text( 'Try ‘[_1]’.', 'gim help switch' ) );
         }
-        else
+        elsif ( $rc != 0 )
         {
             util::throw( ::E_UNEXPECTED, util::text( 'Error: Failed to execute ‘[_1]’.', 'gim switch' ) .
                                          util::text( '‘[_1]’ returned ‘[_2]’:', $command, $rc ) .
