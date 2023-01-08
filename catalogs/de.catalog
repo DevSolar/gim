@@ -27,6 +27,7 @@
 
 # Error messages
 
+'Error: Cannot act on unclean working directory.'                 => 'Fehler: Aktion auf Arbeitsverzeichnis mit Änderungen nicht möglich.'
 'Error: Cannot push an unnamed branch.'                           => 'Fehler: Unbenannter Branch kann nicht gepusht werden.'
 'Error: Command ‘[_1]’ not executable.'                           => 'Fehler: Befehl ‚[_1]‘ nicht ausführbar.'
 'Error: Conflicting options ‘[_1]’ and ‘[_2]’.'                   => 'Fehler: Widersprüchliche Optionen ‚[_1]‘ and ‚[_2]‘.'
@@ -42,6 +43,7 @@
 'Error: ‘[_1]’ already exists on remote ‘[_2]’.'                  => 'Fehler: ‚[_1]‘ existiert bereits auf remote ‚[_2]‘.'
 'Error: ‘[_1]’ already exists.'                                   => 'Fehler: ‚[_1]‘ existiert bereits.'
 'Error: ‘[_1]’ interrupted by signal [_2] ‘[_3]’.'                => 'Fehler: ‚[_1]‘ unterbrochen durch Signal [_2] ‚[_3]‘.'
+'Error: ‘[_1]’ is a commit, not a branch. Forgot ‘--detach’?'     => 'Fehler: ‘[_1]’ ist ein Commit, kein Branch; ‚--detach‘ vergessen?'
 'Error: ‘[_1]’ is neither regular file nor directory.'            => 'Fehler: ‚[_1]‘ ist weder reguläre Datei noch Verzeichnis.'
 'Error: ‘[_1]’ is not a regular file.'                            => 'Fehler: ‚[_1]‘ ist keine reguläre Datei.'
 'Error: ‘[_1]’ is not under version control.'                     => 'Fehler: ‚[_1]‘ nicht unter Versionskontrolle.'
@@ -459,17 +461,23 @@ Optionen ‚--quit-if-one-screen‘, ‚--quit-at-eof‘, und ‚--RAW-CONTROL-C
 Detached HEAD / Unbenannter Branch
 
 Normalerweise ist ‚HEAD‘ eine symbolische Referenz auf den letzten
-Commit des aktuellen Branch. Wenn man allerdings mit ‚gim switch‘
-eine frühere Revision ausgewählt hat, hat man ‚HEAD‘ von allen bereits
-existierenden Branches abgetrennt („detached“).
+Commit -- den Head-Commit -- des aktuellen Branch. Wenn man mit
+‚gim switch‘ auf einen anderen Branch wechselt, wird ‚HEAD‘ (und
+das Arbeitsverzeichnis) entsprechend angepasst.
 
-Wenn nun Änderungen an dieser früheren Revision vorgenommen und
-committed werden, wird damit ein neuer Branch basierend auf dieser
-Revision angelegt. Dieser Branch hat noch keinen Namen erhalten;
-Befehle wie ‚gim status‘ werden statt dessen den gekürzten Hash der
-gewählten Revision als „Name“ des aktuellen Branches anzeigen.
+Manchmal ist es wünschenswert, das Arbeitsverzichnis auf einen
+früheren Stand zu bringen. Der ‚HEAD‘ zeigt dann nicht mehr auf
+einen existierenden Branch; er ist „detached“. Eine andere Art
+sich das vorzustellen ist, dass man einen neuen Branch erzeugt
+hat, der an dieser Stelle der Versionshistorie abzweigt. Jeder
+Commit den man in diesem Zustand machen würde käme auf diesen
+zur Zeit noch unbenannten Branch.
 
-Diese Umstände nennt man „detached HEAD“ oder „unbenannter Branch“.
+In diesem Zustand zeigt ‚gim status‘ so etwas wie ‚<unnamed:a7f653c>‘
+(mit entsprechendem Commit-Hash) statt den (nicht verfügbaren) aktuellen
+Branch.
 
-Man kann entweder den Branch benennenn (TODO), oder ihn mit ‚gim
-switch‘ aufgeben.
+Man kann entweder den Branch benennen (‚gim mkbranch <branch>‘), oder
+ihn verwerfen indem man mit ‚gim switch‘ auf einen anderen Branch
+wechselt.
+

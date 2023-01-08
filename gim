@@ -1578,8 +1578,8 @@ package devel
                           'foo&bar' => '"foo&bar"',   # FIXME
                           'foo*bar' => '"foo*bar"',
                           'foo<bar' => '"foo<bar"',
-                          'foo`bar' => '"foo\`bar"',  #FIXME
-                          'foo"bar' => '"foo\"bar"',  #FIXME
+                          'foo`bar' => '"foo\`bar"',  # FIXME
+                          'foo"bar' => '"foo\"bar"',  # FIXME
                           'foo[bar' => '"foo[bar"',
                           'foo|bar' => '"foo|bar"',
                           'foo(bar' => '"foo(bar"',
@@ -3251,11 +3251,25 @@ package switch
         $self->init();
         my $detach = '';
         Getopt::Long::GetOptions(
-            'detach|d' => sub { $detach = '--detach'; }
+            'detach|d' => sub { $detach = '--detach '; }
         );
         util::check_argv( 1, 1 );
         my $branch = shift( @ARGV );
-        util::execute( "git switch $detach -- $branch", rc => -1 );
+        my $command = "git switch $detach -- $branch";
+        my ( $rc, $output ) = util::execute( $command, rc => 1, out => 1 );
+
+        if ( $rc == 128 && ( util::execute( "git rev-parse $branch^{commit}", rc => 1, out => 0 ) == 0 ) )
+        {
+            util::throw( ::E_SYNTAX, util::text( 'Error: ‘[_1]’ is a commit, not a branch. Forgot ‘--detach’?', $branch ) .
+                                     util::text( 'Try ‘[_1]’.', 'gim help switch' ) );
+        }
+        else
+        {
+            util::throw( ::E_UNEXPECTED, util::text( 'Error: Failed to execute ‘[_1]’.', 'gim switch' ) .
+                                         util::text( '‘[_1]’ returned ‘[_2]’:', $command, $rc ) .
+                                         $output . "\n" );
+        }
+
         dbg::leave();
         return ::E_OK;
     }
@@ -3576,6 +3590,12 @@ package update
         dbg::enter();
         my $self = shift( @_ );
         $self->init();
+        my $stash;
+        Getopt::Long::GetOptions(
+            'stash|s' => sub {
+                $stash = \$stash
+            }
+        );
         util::check_argv( -1, 0 );
         my $pager = util::pager();
 
@@ -3594,20 +3614,13 @@ package update
                     # Are there local changes that need to be stashed?
                     my $changes = util::execute( 'git status --short', rc => -1, out => 1 );
 
-                    if ( $changes )
+                    if ( $changes && ! defined( $stash ) )
                     {
-                        util::execute( "git stash --include-untracked --quiet --message \"‘gim update’ temporary\"", rc => -1, output => -1 );
+                        util::throw( ::E_UNABLE, util::text( 'Error: Cannot act on unclean working directory.' ) );
                     }
 
                     # Do the actual merge
-                    util::execute( 'git rebase --quiet', rc => -1, output => -1 );
-
-                    # Unstash
-                    if ( $changes )
-                    {
-                        util::execute( 'git stash pop --quiet', rc => -1, output => -1 );
-                    }
-
+                    util::execute( 'git rebase --autostash --quiet', rc => -1, output => -1 );
                     print( $pager util::text( 'Changes merged.' ) . "\n" );
                 }
                 else
@@ -3689,7 +3702,7 @@ In this state, ‘gim status’ will show something like
 the (unavailable) current branch name.
 
 You can either name the branch (‘git mkbranch <branch>’), or
-abandon it by ‘gim switch’ to a previously existing branch.
+abandon it by ‘gim switch’ to a different branch.
 }};
 
 ###################################################################
