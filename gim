@@ -1,0 +1,229 @@
+#!/usr/bin/perl
+
+use v5.20;
+
+use strict;
+use warnings;
+no warnings qw( experimental::signatures );
+
+use utf8;
+use feature qw( signatures );
+use open    qw( :std :locale );
+use autodie qw( close );
+
+our $VERSION = v0.0.1;
+
+use Getopt::Long    qw( :config posix_default permute pass_through auto_version );
+use Scalar::Util    qw( looks_like_number reftype );
+use Time::HiRes     qw( gettimeofday tv_interval );
+
+###################################################################
+###################################################################
+my $E_OK    = 0;
+my $E_ERROR = 1;
+
+###################################################################
+###################################################################
+package util
+{
+    # Given a basic message and a list of arguments, this function
+    # inserts arguments in place of placeholders '[_1]', '[_2]'
+    # etc. in the basic message.
+    sub localize ( $msg, @args )
+    {
+        dbg::enter();
+
+        # Replace ‘[_n]’ with argument #n - 1.
+        for ( 1 .. @args )
+        {
+            $msg =~ s/\[_$_\]/$args[ $_ - 1 ]/;
+        }
+
+        dbg::msg( $msg );
+        dbg::leave();
+        return $msg . "\n";
+    }
+
+    # Throw exception: rc as the error code, msg as exception
+    # message.
+    sub throw ( $msg )
+    {
+        $msg = util::localize( 'Error:' ) . $msg;
+        dbg::throw();
+        local $! = $E_ERROR;
+        die( $msg );
+    }
+}
+
+###################################################################
+###################################################################
+package dbg
+{
+    my $_dbg;
+    my $_indent = 0;
+    my $_t0 = [Time::HiRes::gettimeofday];
+
+    # Called from top-level GetOptions() if --debug is specified.
+    # Opens file handle $_dbg to write to gim.log.
+    sub init ( $, $ )
+    {
+        if ( ! open( $_dbg, '>', 'gim.log' ) )
+        {
+            util::throw(
+                util::localize( 'Could not open ‘[_1]’.', 'gim.log' ) .
+                $!
+            );
+        }
+
+        return;
+    }
+
+    # Get a high-resolution timestamp (so gim.log tells how long
+    # operations are taking).
+    sub timestamp
+    {
+        return sprintf( '%07.4f', Time::HiRes::tv_interval( $_t0 ) );
+    }
+
+    # Track entry into a subroutine
+    sub enter
+    {
+        if ( defined( $_dbg ) )
+        {
+            # Using caller() in  DB puts arguments in @DB::args
+            package DB;
+            my $package  = caller( 0 );
+            my $function = ( caller( 1 ) )[3];
+
+            if ( $package eq 'main' )
+            {
+                $function = substr( $function, length( 'main::' ) );
+            }
+            elsif ( $package->isa( 'worker' )
+                && substr( $function, -length( 'new' ) ) ne 'new' )
+            {
+                shift( @DB::args );
+            }
+
+            my $msg = sprintf( '%s %s>> %s(', dbg::timestamp(), ( ' ' x $_indent ), $function );
+
+            if ( scalar( @DB::args ) && ref( $DB::args[0] ) ne 'GLOB' )
+            {
+                $msg .= sprintf( ' %s ',
+                    join(
+                        ', ',
+                        map
+                        {
+                            defined( $_ )
+                                ? ( Scalar::Util::looks_like_number( $_ )
+                                    ? $_
+                                    : ( ( ( Scalar::Util::reftype( $_ ) // '' ) eq 'ARRAY' )
+                                        ? "( '" . join( "', '", @{$_} ) . "' )"
+                                        : ( ( ( Scalar::Util::reftype( $_ ) // '' ) eq 'HASH' )
+                                            ? "SELF"
+                                            : qq('$_')
+                                        )
+                                    )
+                                )
+                                : '<undef>'
+                        } @DB::args
+                    )
+                );
+            }
+
+            $msg .= ')';
+            $_indent += 3;
+            $msg =~ s/\n/\\n/g;
+            say( {$_dbg} $msg );
+        }
+
+        return;
+    }
+
+    # Write a message into gim.log
+    sub msg ( $msg )
+    {
+        if ( defined( $_dbg ) )
+        {
+            for ( split( /\n/, $msg ) )
+            {
+                say( {$_dbg} timestamp() . ' ' . ( ' ' x $_indent ) . $_ );
+            }
+        }
+
+        return;
+    }
+
+    # Track the leaving of a subroutine
+    sub leave
+    {
+        if ( defined( $_dbg ) )
+        {
+            $_indent -= 3;
+        }
+
+        return;
+    }
+
+    # Track the throwing of an exception
+    sub throw
+    {
+        $_indent = 0;
+        dbg::msg( '<<<<<' );
+        return;
+    }
+
+    # Close $_dbg on program exit
+    END
+    {
+        if ( defined( $_dbg ) && fileno( $_dbg ) )
+        {
+            dbg::msg( 'dbg::END' );
+            if ( ! close( $_dbg ) )
+            {
+                util::throw(
+                    util::localize( 'Could not close ‘[_1]’.', 'gim.log' ) .
+                    $!
+                );
+            }
+        }
+
+        return;
+    }
+}
+
+###################################################################
+###################################################################
+# Base class for gim subcommands.
+package worker
+{
+    sub new ( $class )
+    {
+        dbg::enter();
+        my $self = bless( { name => $class }, $class );
+
+        if ( $self->can( 'init' ) )
+        {
+            $self->init();
+        }
+
+        dbg::leave();
+        return $self;
+    }
+}
+
+###################################################################
+###################################################################
+# Global program options
+::GetOptions(
+    'debug'  => \&dbg::init
+);
+
+# If required by testdriver, return like a module, do not run like
+# a program.
+if ( $0 eq './testgim' )
+{
+    return 1;
+}
+
+exit $E_OK;

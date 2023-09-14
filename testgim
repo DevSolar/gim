@@ -1,0 +1,112 @@
+#!/usr/bin/perl
+
+use v5.20;
+
+use feature      qw( signatures );
+no warnings      qw( experimental::signatures );
+use utf8;
+
+unshift( @ARGV, '--debug' );
+
+use File::Path qw( make_path );
+
+use constant CONFIG_DIR => $ENV{ HOME } . '/.config/gim/';
+use constant PACKAGE_DIR => CONFIG_DIR . 'perl5/';
+
+BEGIN
+{
+    local $@ = '';
+    make_path( CONFIG_DIR );
+
+    my $rc = eval
+    {
+        require Carp::Assert::More;
+        Carp::Assert::More->import();
+        1;
+    };
+
+    if ( ! $rc )
+    {
+        # Pull package from GitHub to ~/.config/gim.
+        make_path( PACKAGE_DIR . 'Carp/Assert' );
+        system( 'curl https://raw.githubusercontent.com/petdance/carp-assert-more/refs/heads/dev/More.pm -s > ' . PACKAGE_DIR . 'Carp/Assert/More.pm' );
+        use lib PACKAGE_DIR;
+        require Carp::Assert::More;
+        Carp::Assert::More->import();
+        1;
+    }
+}
+
+require './gim';
+
+########################################
+
+sub assert_throw( $cmd, $msg )
+{
+    $cmd = $cmd . '; 1;';
+
+    if ( eval $cmd )
+    {
+        $msg =~ s/\n/\\n/g;
+        assert_fail( 'Exception expected: "' . $msg . '"' );
+    }
+    else
+    {
+        assert_is( $@, $msg );
+    }
+
+    return;
+}
+
+sub assert_nothrow( $cmd )
+{
+    $cmd = $cmd . '; 1;';
+
+    if ( ! eval $cmd )
+    {
+        assert_fail( 'Unexpected exception:' . "\n" . $@ );
+    }
+
+    return;
+}
+
+########################################
+say( 'Running tests (check gim.log).' );
+########################################
+
+##############################
+dbg::msg( '=== throw() ===' );
+##############################
+
+assert_throw( "util::throw( \"Zero\\n\" )", "Error:\nZero\n" );
+dbg::msg( q{>> util::localize( 'Error:' ) # expected} );
+dbg::msg( q{   Error: # expected} );
+dbg::msg( q{<<<<< # expected} );
+
+#################################
+dbg::msg( '=== localize() ===' );
+#################################
+
+assert_is( util::localize( 'Hello World.' ), "Hello World.\n" );
+assert_is( util::localize( 'Hello [_1].', 'World' ), "Hello World.\n" );
+assert_is( util::localize( '[_2] [_1].', 'World', 'Hello' ), "Hello World.\n" );
+
+############################
+dbg::msg( '=== debug ===' );
+############################
+
+sub main_func_noargs() { dbg::enter(); dbg::leave(); return; }
+main_func_noargs();
+dbg::msg( q{>> main_func_noargs() # expected} );
+sub main_func_withargs( $, $ ) { dbg::enter(); dbg::leave(); return; }
+main_func_withargs( 1, q{two" args} );
+dbg::msg( q{>> main_func_withargs( 1, 'two" args' ) # expected} );
+package dummy { sub func($) { dbg::enter(); dbg::leave(); return; } }
+dummy::func( 'arg' );
+dbg::msg( q{>> dummy::func( 'arg' ) # expected} );
+
+############################
+dbg::msg( '=== Done. ===' );
+############################
+
+say( 'Tests finished.' );

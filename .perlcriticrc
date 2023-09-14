@@ -1,0 +1,29 @@
+severity = harsh
+verbose = 11
+
+# v5.20 Subroutine Signatures are not handled gracefully
+[-Subroutines::ProhibitSubroutinePrototypes]
+[TestingAndDebugging::ProhibitNoWarnings]
+allow = experimental::signatures exec
+
+# Having everything in one file is an architectural decision.
+[-Modules::ProhibitMultiplePackages]
+# As is handling the filehandles the way they are.
+[-InputOutput::RequireBriefOpen]
+# As is using string eval in assert_[no]throw
+[-BuiltinFunctions::ProhibitStringyEval]
+
+# Access to @DB::args in debugging output
+[Variables::ProhibitPackageVars]
+add_packages = DB
+
+# throw() is always called in combination with localize(),
+# which always adds newlines. Perl::Critic does not detect
+# this, however.
+[-ErrorHandling::RequireCarping]
+
+# No backward compatibility to pre-v5.20 considered anyway
+[-ValuesAndExpressions::ProhibitVersionStrings]
+
+# I like Perl regexes the way they are, thank you very much
+[-RegularExpressions::RequireExtendedFormatting]
