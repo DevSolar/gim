@@ -6,6 +6,9 @@ verbose = 11
 [TestingAndDebugging::ProhibitNoWarnings]
 allow = experimental::signatures exec
 
+# Alternatives rely on packages not available on all targets
+[-InputOutput::ProhibitInteractiveTest]
+
 # Having everything in one file is an architectural decision.
 [-Modules::ProhibitMultiplePackages]
 # As is handling the filehandles the way they are.
@@ -14,10 +17,15 @@ allow = experimental::signatures exec
 [-BuiltinFunctions::ProhibitStringyEval]
 # As is using constant pragma where I actually need it
 [-ValuesAndExpressions::ProhibitConstantPragma]
+# As is using q{} instead of HereDocs for help texts
+[-ValuesAndExpressions::ProhibitImplicitNewlines]
+# As is using backtick notation for tput
+[-InputOutput::ProhibitBacktickOperators]
 
 # Access to @DB::args in debugging output
+# Setting Text::Wrap::columns
 [Variables::ProhibitPackageVars]
-add_packages = DB
+add_packages = DB Text::Wrap
 
 # throw() is always called in combination with localize(),
 # which always adds newlines. Perl::Critic does not detect

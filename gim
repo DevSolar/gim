@@ -11,16 +11,26 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.2;
+our $VERSION = v0.0.3;
 
 use Getopt::Long    qw( :config posix_default permute pass_through auto_version );
 use Scalar::Util    qw( looks_like_number reftype );
+use Text::Wrap;
 use Time::HiRes     qw( gettimeofday tv_interval );
 
 ###################################################################
 ###################################################################
 my $E_OK    = 0;
 my $E_ERROR = 1;
+
+my %_category =
+(
+    'info'   => { order => 0, about => 'Obtaining information' },
+    'local'  => { order => 1, about => 'Modify local repository' },
+    'remote' => { order => 2, about => 'Modify remote repository' }
+);
+my %_help;  # => category, about, usage, help
+my %_topic; # => order, about, help
 
 ###################################################################
 ###################################################################
@@ -338,13 +348,425 @@ package worker
         dbg::leave();
         return $self;
     }
+
+    sub init_pager ( $self )
+    {
+        dbg::enter();
+
+        $Text::Wrap::columns = ( `tput cols 2> /dev/null` || 76 );
+
+        if ( -t STDOUT || -t STDERR )
+        {
+            open( $self->{ pager }, '|-', 'less -FeRXS' ) || die;
+        }
+
+        if ( -t STDOUT )
+        {
+            open( $self->{ out }, '>&', $self->{ pager } ) || die;
+            $self->{ out_paged } = 1;
+        }
+        else
+        {
+            $self->{ out } = \*STDOUT;
+        }
+
+        if ( -t STDERR )
+        {
+            open( $self->{ err }, '>&', $self->{ pager } ) || die;
+            $self->{ err_paged } = 1;
+        }
+        else
+        {
+            $self->{ err } = \*STDERR;
+        }
+
+        dbg::leave();
+        return;
+    }
+
+    DESTROY
+    {
+        my ( $self ) = @_;
+
+        if ( defined( $self->{ out_paged } ) )
+        {
+            close( $self->{ out } );
+        }
+
+        if ( defined( $self->{ err_paged } ) )
+        {
+            close( $self->{ err } );
+        }
+
+        if ( defined( $self->{ pager } ) )
+        {
+            close( $self->{ pager } );
+        }
+
+        return;
+    }
+}
+
+###################################################################
+package help
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_pager();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $subject = 'help';
+
+        if ( @ARGV == 0 || $ARGV[0] eq 'topics' )
+        {
+            $self->help();
+        }
+        else
+        {
+            $subject = shift( @ARGV );
+
+            if ( defined( $_topic{ $subject } ) )
+            {
+                $self->help_on_topic( $subject );
+            }
+            elsif ( defined( $_help{ $subject } ) )
+            {
+                $self->help_on_command( $subject );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( 'No help available for ‘[_1]’.', $subject )
+                );
+            }
+        }
+
+        dbg::leave();
+        return;
+    }
+
+    sub help ( $self )
+    {
+        dbg::enter();
+        print( {$self->{ out }}
+            "\n" .
+            ' ' . util::localize( 'Usage:' ) .
+            ( ( @ARGV == 0 ) ? "   gim help <subcommand>\n" : "" ) .
+            "   gim help <topic>\n\n" .
+            ( ( @ARGV == 0 ) ? ' ' . util::localize( 'Available subcommands:' ) . "\n" : "" )
+        );
+
+        if ( @ARGV == 0 )
+        {
+            # List each category in their sort order
+            foreach my $category ( sort { $_category{ $a }{ order } <=> $_category{ $b }{ order } } keys %_category )
+            {
+                print( {$self->{ out }}
+                    '   ' . util::localize( $_category{ $category }{ about } )
+                );
+
+                # List the commands alphabetically
+                foreach my $command ( sort keys %_help )
+                {
+                    # Filter for commands of the current category
+                    if ( $_help{ $command }{ category } eq $category )
+                    {
+                        printf( {$self->{ out }}
+                            "     gim %-19s %s\n", $command, $_help{ $command }{ about }
+                        );
+                    }
+                }
+
+                print( {$self->{ out }} "\n" );
+            }
+        }
+
+        print( {$self->{ out }}
+            ' ' . util::localize( 'Available topics:' ) .
+            "\n"
+        );
+
+        foreach my $topic ( sort { $_topic{ $a }{ order } <=> $_topic{ $b }{ order } } keys %_topic )
+        {
+            printf( {$self->{ out }}
+                "     %-23s %s\n", $topic, $_topic{ $topic }{ about }
+            );
+        }
+
+        dbg::leave();
+        return;
+    }
+
+    sub help_on_topic ( $self, $topic )
+    {
+        dbg::enter();
+        print( {$self->{ out }}
+            "\n" .
+            ' ' . $_topic{ $topic }{ about } .
+            "\n\n" .
+            Text::Wrap::fill( ' ', ' ', $_topic{ $topic }{ help } )
+        );
+        dbg::leave();
+        return;
+    }
+
+    sub help_on_command ( $self, $command )
+    {
+        dbg::enter();
+        print( {$self->{ out }}
+            "\n" .
+            ' ' . util::localize( 'Usage:' ) .
+            '   ' . $_help{ $command }{ usage } .
+            "\n" .
+            Text::Wrap::fill( ' ', ' ', $_help{ $command }{ help } )
+        );
+
+        dbg::leave();
+        return;
+    }
+
+$_help{ help } =
+{
+    category => q{info},
+    about => q{Help system},
+    usage => q{gim help [<subject>]
+},
+    help => q{Gim help system.
+
+Gim does not come with separate documentation, but its own help
+system.
+
+With ‘gim help’ you get an overview of available subcommands and
+help topics.
+
+With ‘gim help <subject>’ you get help on a specific subject, which
+can be either a subcommand, or a general help topic (which are not
+linked to any specific subcommand).
+}};
+
 }
 
 ###################################################################
 ###################################################################
+# Help Topics
+$_topic{ intro } =
+{
+    order => 1,
+    about => q{Introduction to 'Git for Mortals'},
+    help => q{Gim is an attempt at providing users with a nicer
+command line interface to the version control software Git.
+
+https://github.com/DevSolar/gim
+
+It was written by Martin Baute, <solar@rootdirectory.de>, and is
+provided as free software under Creative Commons CC0 1.0 Universal.
+
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Gim is written in Perl, and great care has been taken to ensure
+that it runs in Git Bash for Windows (which does not cater for
+installing additional modules as dependencies). It should run fine
+anywhere Git itself runs, including Git Bash, Cygwin, and native
+Bash on both Linux and Android.
+}};
+
+$_topic{ simplicity } =
+{
+    order => 2,
+    about => q{How Gim tries to be simpler},
+    help => q{Git was written as a power tool for repository
+maintainers, then got more options for more diverse workflows,
+and unfortunately it never received the reworking and polish it
+should have.
+
+For one, Git offers extensive pretty-printing options, yet
+by default uses rather unappealing formatting on most of its
+commands. There is technical data cluttering the output of
+e.g. ‘pull’ or ‘push’, unnecessary verboseness to ‘status’,
+and the default output of ‘log’ is dismal.
+
+Gim attempts to prune Git output of unnecessary details, to
+format output in a way easily skimmed at a glance, and to make
+use of colors to improve legibility.
+
+Some frequently used Git functions hide behind somewhat less
+than intuitive combinations of commands and options. Plus,
+some features of Git are rather confusing to newcomers, both
+without previous VCS knowledge and those coming from e.g.
+Subversion or Perforce. One example would be the whole concept
+of Staging, which Git documentation also refers to as “the
+Index File” in places to confuse you even further.
+
+A side effect of this is that Git documentation, like manual
+pages or the built-in help, is lengthy, confusing, and quite
+often merely cross-referencing yet other documentation. This
+can be quite irritating.
+
+Gim trims down (some would say ruthlessly) on the number of
+available options, without compromising too much on functionality.
+The commands you will be using dozens of times a day should be
+short, easily memorized mnemonics without requiring extra options.
+
+Gim has consciously decided to rename some specific commands
+to cater for the more common (and less surprising) use case,
+e.g. using ‘revert’ to refer to the reverting of local changes,
+not reverting commits by making another commit.
+
+Gim provides documentation for all its commands through ‘gim
+help’, and tries to keep things short and to the point, so you
+can go back to programming as soon as possible.
+}};
+
+$_topic{ safety } =
+{
+    order => 3,
+    about => q{How Gim tries to be safer},
+    help => q{There are several features to Git that are, to put
+it mildly, flirting with desaster. This is because Git, unlike
+many other versioning tools, explicitly allows removing or
+overwriting information, even from commits that had been made
+long ago. Or get you swamped in the middle of a multi-command
+workflow with very few hints on what is going on, or how to
+recover from there gracefully.
+
+While some of these features are actually quite useful, the way
+Git communicates about those -- or rather, does not communicate
+in time -- can be daunting. A good rule of thumb for beginners
+is to stay away from any command beginning with ‘re...’, and to
+use ‘--force’ only after asking someone more experienced.
+
+Gim tries to be more up-forward with information, especially in
+multi-command workflows and potentially damaging operations. As
+a rule of thumb, Gim will always ask you before doing anything
+that might destroy data.
+
+In other areas, Gim combines multi-command workflows into fewer
+commands, or even a single one, while adding safeguards and
+double-checks to keep you from derailing.
+}};
+
+$_topic{ navigation } =
+{
+    order => 4,
+    about => q{Commits, Tags, Branches, Navigation},
+    help => q{To understand several more advanced topics, it is
+necessary to understand how a repository is being navigated.
+
+Every commit in the repository is identified by a 160-bit hash.
+Any existing commit can be addressed by that hash.
+
+Since hash values are somewhat cumbersome, commits that you would
+routinely want to navigate to can be tagged with plain text names
+for ease of reference. (Check out the ‘gim tag’ subcommand and
+the ‘tags’ help topic.)
+
+A branch is a special tag that gets moved along as you make new
+commits.
+
+The current commit also can be referred to by a special tag,
+‘HEAD’.
+
+Every commit (except the very first one) has at least one “parent”
+commit. (Merge commits have more than one.) You can always move
+“up” the commit chain along the parental line, but you cannot move
+“down”. (A commit knows its parent(s), but not its childs.)
+
+This results in a special case if you navigated to a commit that
+is not a branch head: Git can only “see” the current commit
+(“HEAD”) and its parents. Git calls this state “detached HEAD”.
+
+Should you make a commit now, that would not be placed “in line”
+with any branch, but basically your ‘HEAD’ would now be pointing
+at a new branch head that has no name so far.
+
+You can assign a branch name to your current ‘HEAD’ (‘mkbranch’),
+or move back to one of the branch heads.
+}};
+
+$_topic{ rewrite } =
+{
+    order => 5,
+    about => q{Rewriting history},
+    help => q{Certain features of Gim allow overwriting the commit
+history. This has pros and cons.
+
+Unneeded branches can be deleted, confusing merge histories can be
+cleaned up, and several individual commits can be squashed into
+one, to name just a few pros.
+
+There are three significant cons, however.
+
+The information “cleaned up” this way will be lost. And anyone who
+has already cloned (or pulled) the previous version(s) might get
+confused when the next pull changes the basis for their edits.
+
+And, probably most nefarious of them all, rewriting history wipes
+out any tags applied to any of the commits affected by the rewrite.
+Basically, if anything is changed about a commit -- including the
+hash code of its parent -- it is no longer the commit that had been
+tagged, but a different commit, and any tag on it is lost.
+
+Gim draws the line at changing “public” history. While there will
+be no extra warnings when you rewrite local history, Gim will warn
+and request additional confirmation from you when a command would
+affect history that has already been pushed upstream.
+}};
+
+$_topic{ workflows } =
+{
+    order => 6,
+    about => q{How Gim tries to help with workflows},
+    help => q{Gim documents a number of common workflows. This
+is mostly aimed at newcomers, who are not sure how to do things
+yet.
+
+There is no claim that these workflows are described in the best
+way, let alone the “one right” way. But they are described in a
+simple way, in terms of available Gim commands.
+}};
+
+$_topic{ tags } =
+{
+    order => 7,
+    about => q{How Gim makes tags useful},
+    help => q{THe default behavior of Git when it comes to tags is
+somewhat unintuitive, and not really useful. Gim has the proper
+options in place to make them useful:
+
+- annotated tags get pushed automatically (but not lightweight
+ones).
+
+- annotated tags get pruned on pulling (i.e., annotated tags that
+do not exist remotely get removed from your local repository).
+
+- lightweight tags do not get pruned (actually, they are saved and
+re-applied during a pull).
+
+This allows you to use annotated tags for sharing tags with others,
+and lightweight tags for local use, without requiring any special
+attention other than setting or deleting them through ‘gim tag’.
+
+Note that using git commands on your local repository might handle
+tags in ways not consistent with this concept. Refer to the git
+documentation for details.
+}};
+
+###################################################################
+###################################################################
+my $command;
+
 # Global program options
 ::GetOptions(
-    'debug'  => \&dbg::init
+    'debug'  => \&dbg::init,
+    'help|h|?' => \$command
 );
 
 # If required by testdriver, return like a module, do not run like
@@ -354,6 +776,15 @@ if ( $0 eq './testgim' )
     return 1;
 }
 
-util::subcommand( '' )->run();
+if ( defined( $command ) )
+{
+    $command = help->new();
+}
+else
+{
+    $command = util::subcommand( 'help' );
+}
+
+$command->run();
 
 exit $E_OK;
