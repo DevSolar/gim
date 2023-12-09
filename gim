@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.1;
+our $VERSION = v0.0.2;
 
 use Getopt::Long    qw( :config posix_default permute pass_through auto_version );
 use Scalar::Util    qw( looks_like_number reftype );
@@ -26,6 +26,83 @@ my $E_ERROR = 1;
 ###################################################################
 package util
 {
+    # Check that the number of arguments remaining in @ARGV
+    # is no less than min and no more than max. -1 means no
+    # check.
+    sub argv_check ( $min, $max )
+    {
+        dbg::enter();
+
+        if ( @ARGV < $min )
+        {
+            util::throw(
+                util::localize( 'Too few arguments.' ) .
+                util::localize( 'Try ‘[_1]’.', 'gim help ' . caller( 0 ) )
+            );
+        }
+
+        if ( ( $max > -1 ) && ( @ARGV > $max ) )
+        {
+            util::throw(
+                util::localize( 'Too many arguments.' ) .
+                util::localize( 'Try ‘[_1]’.', 'gim help ' . caller( 0 ) )
+            );
+        }
+
+        dbg::leave();
+        return;
+    }
+
+    # Check if the list of arguments violates the predicate
+    # given as first parameter. Returns if all arguments
+    # check out, throws otherwise.
+    # Predicates:
+    # FILE, FILEORDIR, TRACKED
+    sub filespec_check ( $predicate, @filespec )
+    {
+        dbg::enter();
+
+        foreach ( @filespec )
+        {
+            if ( ! -e $_ )
+            {
+                util::throw(
+                    util::localize( '‘[_1]’ does not exist.', $_ )
+                );
+            }
+
+            if ( ( $predicate eq 'FILE' ) && ( ! -f $_ ) )
+            {
+                util::throw(
+                    util::localize( '‘[_1]’ is not a regular file.', $_ )
+                );
+            }
+
+            if ( ( $predicate eq 'FILEORDIR' ) && ( ( ( ! -f $_ ) && ( ! -d $_ ) ) || -l $_ ) )
+            {
+                util::throw(
+                    util::localize( '‘[_1]’ is neither regular file nor directory.', $_ )
+                );
+            }
+
+            if ( $predicate eq 'TRACKED' )
+            {
+                my @command = ( 'git', 'ls-files', '--error-unmatch', $_ );
+                my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+                if ( $rc != 0 )
+                {
+                    util::throw(
+                        util::localize( '‘[_1]’ is not under version control.', $_ )
+                    );
+                }
+            }
+        }
+
+        dbg::leave();
+        return;
+    }
+
     # Given a basic message and a list of arguments, this function
     # inserts arguments in place of placeholders '[_1]', '[_2]'
     # etc. in the basic message.
@@ -42,6 +119,57 @@ package util
         dbg::msg( $msg );
         dbg::leave();
         return $msg . "\n";
+    }
+
+    # Pull subcommand from @ARGV.
+    # When called from the top level, checks existence of worker
+    # class by that name, and returns an instance of that class.
+    # When called from a worker class, checks for a function by
+    # that name, and returns the name.
+    sub subcommand ( $default, %aliases )
+    {
+        dbg::enter();
+        my $caller = caller( 0 );
+        my $subcommand;
+
+        if ( @ARGV )
+        {
+            my $candidate = $aliases{ $ARGV[0] } // $ARGV[0];
+
+            if ( $caller eq 'main' )
+            {
+                if ( $candidate->isa( 'worker' ) && ! ( $candidate =~ m/worker$/ ) )
+                {
+                    $subcommand = $candidate;
+                    shift( @ARGV );
+                }
+            }
+            else
+            {
+                if ( $caller->can( $candidate ) )
+                {
+                    $subcommand = $candidate;
+                    shift( @ARGV );
+                }
+            }
+
+            if ( ! defined( $subcommand ) )
+            {
+                util::throw( util::localize( 'Unknown command.' ) );
+            }
+        }
+        elsif ( ! defined( $subcommand ) )
+        {
+            $subcommand = $default;
+        }
+
+        if ( $caller eq 'main' )
+        {
+            $subcommand = $subcommand->new();
+        }
+
+        dbg::leave();
+        return $subcommand;
     }
 
     # Throw exception: rc as the error code, msg as exception
@@ -225,5 +353,7 @@ if ( $0 eq './testgim' )
 {
     return 1;
 }
+
+util::subcommand( '' )->run();
 
 exit $E_OK;

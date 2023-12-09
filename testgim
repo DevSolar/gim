@@ -8,13 +8,16 @@ use utf8;
 
 unshift( @ARGV, '--debug' );
 
-use File::Path qw( make_path );
+use File::Path qw( make_path remove_tree );
 
 use constant CONFIG_DIR => $ENV{ HOME } . '/.config/gim/';
 use constant PACKAGE_DIR => CONFIG_DIR . 'perl5/';
+use constant TESTDIR => '.testgim.dir';
 
 BEGIN
 {
+    remove_tree( TESTDIR );
+
     local $@ = '';
     make_path( CONFIG_DIR );
 
@@ -40,6 +43,40 @@ BEGIN
 require './gim';
 
 ########################################
+
+my $val;
+
+package testclass
+{
+    use parent -norequire => 'worker';
+    sub run ( $, $ )
+    {
+        dbg::enter();
+        dbg::leave();
+        return;
+    }
+}
+
+package testsuperclass
+{
+    use parent -norequire => 'worker';
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $command = util::subcommand( 'function' );
+        $self->$command();
+        dbg::leave();
+        return;
+    }
+
+    sub function ( $ )
+    {
+        dbg::enter();
+        dbg::leave();
+        return;
+    }
+}
 
 sub assert_throw( $cmd, $msg )
 {
@@ -70,9 +107,22 @@ sub assert_nothrow( $cmd )
     return;
 }
 
+sub write_to_file( $filename, $str )
+{
+    open( my $fh, '>', $filename ) or assert_fail( 'Opening ' . $filename . ' failed.' );
+    print( $fh $str ) or assert_fail( 'Writing to ' . $filename . ' failed.' );
+    close( $fh ) or assert_fail( 'I/O error on closing ' . $filename );
+    undef( $fh );
+    return;
+}
+
 ########################################
 say( 'Running tests (check gim.log).' );
 ########################################
+
+mkdir( TESTDIR );
+write_to_file( TESTDIR . '/foo', '' );
+
 
 ##############################
 dbg::msg( '=== throw() ===' );
@@ -104,6 +154,52 @@ dbg::msg( q{>> main_func_withargs( 1, 'two" args' ) # expected} );
 package dummy { sub func($) { dbg::enter(); dbg::leave(); return; } }
 dummy::func( 'arg' );
 dbg::msg( q{>> dummy::func( 'arg' ) # expected} );
+worker->new();
+dbg::msg( q{>> worker::new( 'worker' ) # expected} );
+$val = testclass->new();
+dbg::msg( q{>> worker::new( 'testclass' ) # expected} );
+$val->run( 'arg' );
+dbg::msg( q{>> testclass::run( 'arg' ) # expected} );
+local @ARGV = ( 'function' );
+$val = testsuperclass->new();
+dbg::msg( q{>> worker::new( 'testsuperclass' ) # expected} );
+$val->run();
+dbg::msg( q{>> testsuperclass::run() # expected} );
+dbg::msg( q{   >> util::subcommand( 'function' ) # expected} );
+dbg::msg( q{   >> testsuperclass::function() # expected} );
+
+###################################
+dbg::msg( '=== argv_check() ===' );
+###################################
+
+local @ARGV = ();
+assert_nothrow( "util::argv_check( 0, 0 )" );
+assert_nothrow( "util::argv_check( -1, -1 )" );
+assert_nothrow( "util::argv_check( -1, 0 )" );
+assert_nothrow( "util::argv_check( 0, -1 )" );
+assert_throw( "util::argv_check( 1, -1 )", "Error:\nToo few arguments.\nTry ‘gim help main’.\n" );
+local @ARGV = ( 'one' );
+assert_nothrow( "util::argv_check( 1, 1 )" );
+assert_nothrow( "util::argv_check( -1, -1 )" );
+assert_nothrow( "util::argv_check( -1, 1 )" );
+assert_nothrow( "util::argv_check( 1, -1 )" );
+assert_throw( "util::argv_check( 2, -1 )", "Error:\nToo few arguments.\nTry ‘gim help main’.\n" );
+assert_throw( "util::argv_check( -1, 0 )", "Error:\nToo many arguments.\nTry ‘gim help main’.\n" );
+
+#######################################
+dbg::msg( '=== filespec_check() ===' );
+#######################################
+
+assert_nothrow( "util::filespec_check( 'FILE', TESTDIR . '/foo' )" );
+assert_throw( "util::filespec_check( 'FILE', TESTDIR )", "Error:\n‘" . TESTDIR . "’ is not a regular file.\n" ); # not found
+assert_throw( "util::filespec_check( 'FILE', TESTDIR . '/bar' )", "Error:\n‘" . TESTDIR . "/bar’ does not exist.\n" ); # directory
+assert_throw( "util::filespec_check( 'FILE', '/dev/zero' )", "Error:\n‘/dev/zero’ is not a regular file.\n" ); # character special
+assert_throw( "util::filespec_check( 'FILE', '/proc/self' )", "Error:\n‘/proc/self’ is not a regular file.\n" ); # symlink
+assert_nothrow( "util::filespec_check( 'FILEORDIR', TESTDIR . '/foo' )" );
+assert_nothrow( "util::filespec_check( 'FILEORDIR', TESTDIR )" );
+assert_throw( "util::filespec_check( 'FILEORDIR', TESTDIR . '/bar' )", "Error:\n‘" . TESTDIR . "/bar’ does not exist.\n" ); # not found
+assert_throw( "util::filespec_check( 'FILEORDIR', '/dev/zero' )", "Error:\n‘/dev/zero’ is neither regular file nor directory.\n" ); # character special
+assert_throw( "util::filespec_check( 'FILEORDIR', '/proc/self' )", "Error:\n‘/proc/self’ is neither regular file nor directory.\n" ); # symlink
 
 ############################
 dbg::msg( '=== Done. ===' );

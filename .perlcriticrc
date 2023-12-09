@@ -12,6 +12,8 @@ allow = experimental::signatures exec
 [-InputOutput::RequireBriefOpen]
 # As is using string eval in assert_[no]throw
 [-BuiltinFunctions::ProhibitStringyEval]
+# As is using constant pragma where I actually need it
+[-ValuesAndExpressions::ProhibitConstantPragma]
 
 # Access to @DB::args in debugging output
 [Variables::ProhibitPackageVars]
