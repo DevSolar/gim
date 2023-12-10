@@ -45,6 +45,11 @@ require './gim';
 ########################################
 
 my $val;
+my $exe;
+my $out;
+my $err;
+my $rc;
+my @command;
 
 package testclass
 {
@@ -122,7 +127,9 @@ say( 'Running tests (check gim.log).' );
 
 mkdir( TESTDIR );
 write_to_file( TESTDIR . '/foo', '' );
-
+write_to_file( TESTDIR . '/eecho', '/usr/bin/echo $* >&2' );
+@command = ( 'chmod', '+x', TESTDIR . '/eecho' );
+executor::run( \@command );
 
 ##############################
 dbg::msg( '=== throw() ===' );
@@ -200,6 +207,49 @@ assert_nothrow( "util::filespec_check( 'FILEORDIR', TESTDIR )" );
 assert_throw( "util::filespec_check( 'FILEORDIR', TESTDIR . '/bar' )", "Error:\n‘" . TESTDIR . "/bar’ does not exist.\n" ); # not found
 assert_throw( "util::filespec_check( 'FILEORDIR', '/dev/zero' )", "Error:\n‘/dev/zero’ is neither regular file nor directory.\n" ); # character special
 assert_throw( "util::filespec_check( 'FILEORDIR', '/proc/self' )", "Error:\n‘/proc/self’ is neither regular file nor directory.\n" ); # symlink
+assert_nothrow( "util::filespec_check( 'TRACKED', 'gim' )" );
+assert_nothrow( "util::filespec_check( 'TRACKED', '.' )" );
+assert_throw( "util::filespec_check( 'TRACKED', TESTDIR . '/foo' )", "Error:\n‘" . TESTDIR . "/foo’ is not under version control.\n" );
+assert_throw( "util::filespec_check( 'TRACKED', TESTDIR . '/bar' )", "Error:\n‘" . TESTDIR . "/bar’ does not exist.\n" );
+assert_throw( "util::filespec_check( 'TRACKED', TESTDIR )", "Error:\n‘" . TESTDIR . "’ is not under version control.\n" );
+
+###############################
+dbg::msg( '=== executor ===' );
+###############################
+
+@command = ( 'nosuchcommand', 'nosucharg' );
+eval { $exe = executor->new( \@command ); 1; }
+    or do { assert_like( $@, qr/Error:\nFailure while executing ‘nosuchcommand nosucharg’/ ); };
+@command = ( '/usr/bin/echo', '-e', '1\n2\n3\n4' );
+$exe = executor->new( \@command );
+$rc = 1;
+while ( $exe->readln() )
+{
+    chomp;
+    assert_is( $_, $rc );
+    ++$rc;
+}
+$exe->close_exe();
+assert_is( $exe->{ linecount }, 4 );
+assert_is( $exe->{ rc }, 0 );
+assert_is( $exe->{ errors }, '' );
+@command = ( TESTDIR . '/eecho', '-e', '1\n2\n3\n4' );
+$exe = executor->new( \@command );
+while ( $exe->readln() ) {}
+$exe->close_exe();
+assert_is( $exe->{ linecount }, 0 );
+assert_is( $exe->{ rc }, 0 );
+assert_is( $exe->{ errors }, "1\n2\n3\n4\n" );
+@command = ( '/usr/bin/echo', '-e', '1\n2\n3\n4' );
+( $out, $err, $rc ) = executor::run( \@command );
+assert_is( $out, "1\n2\n3\n4\n" );
+assert_is( $err, '' );
+assert_is( $rc, 0 );
+@command = ( TESTDIR . '/eecho', '-e', '1\n2\n3\n4' );
+( $out, $err, $rc ) = executor::run( \@command );
+assert_is( $out, '' );
+assert_is( $err, "1\n2\n3\n4\n" );
+assert_is( $rc, 0 );
 
 ############################
 dbg::msg( '=== Done. ===' );

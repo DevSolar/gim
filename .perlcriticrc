@@ -19,6 +19,8 @@ allow = experimental::signatures exec
 [-ValuesAndExpressions::ProhibitConstantPragma]
 # As is using q{} instead of HereDocs for help texts
 [-ValuesAndExpressions::ProhibitImplicitNewlines]
+# As is using constant pragma where I actually need it
+[-ValuesAndExpressions::ProhibitConstantPragma]
 # As is using backtick notation for tput
 [-InputOutput::ProhibitBacktickOperators]
 

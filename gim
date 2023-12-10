@@ -11,12 +11,48 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.3;
+our $VERSION = v0.0.4;
 
+use Config          qw( %Config );
+use File::Path      qw( make_path );
 use Getopt::Long    qw( :config posix_default permute pass_through auto_version );
+use IPC::Open3      qw( open3 );
 use Scalar::Util    qw( looks_like_number reftype );
+use Symbol          qw( gensym );
 use Text::Wrap;
 use Time::HiRes     qw( gettimeofday tv_interval );
+
+use constant CONFIG_DIR => $ENV{ HOME } . '/.config/gim/';
+use constant PACKAGE_DIR => CONFIG_DIR . 'perl5/';
+
+BEGIN
+{
+    local $@ = '';
+    make_path( CONFIG_DIR );
+
+    # Gim relies on Capture::Tiny, which however is not available on all
+    # target platforms (most notably Git Bash on Windows). Unfortunately
+    # this platform _also_ lacks the infrastructure to pull the package
+    # from CPAN. So we do it manually.
+    my $rc = eval
+    {
+        # Check if package is already available
+        require Capture::Tiny;
+        Capture::Tiny->import( qw( :all ) );
+        1;
+    };
+
+    if ( ! $rc )
+    {
+        # Pull package from GitHub to ~/.config/gim.
+        make_path( PACKAGE_DIR . 'Capture' );
+        system( 'curl https://raw.githubusercontent.com/dagolden/Capture-Tiny/master/lib/Capture/Tiny.pm -s > ' . PACKAGE_DIR . 'Capture/Tiny.pm' );
+        use lib PACKAGE_DIR;
+        require Capture::Tiny;
+        Capture::Tiny->import( qw( :all ) );
+        1;
+    }
+}
 
 ###################################################################
 ###################################################################
@@ -32,6 +68,8 @@ my %_category =
 my %_help;  # => category, about, usage, help
 my %_topic; # => order, about, help
 
+my @sig_names;
+@sig_names[ split( ' ', $Config{ sig_num } ) ] = split( ' ', $Config{ sig_name } );
 ###################################################################
 ###################################################################
 package util
@@ -131,6 +169,46 @@ package util
         return $msg . "\n";
     }
 
+    sub rc_check ( $rc, $command, $err, %options )
+    {
+        dbg::enter();
+
+        my %opts = ( throw_on_fail => 1, %options );
+
+        if ( $rc != 0 )
+        {
+            if ( $rc == -1 )
+            {
+                util::throw(
+                    util::localize( 'Could not execute ‘[_1]’.', ${$command}[0] ) .
+                    $err .
+                    "\n"
+                );
+            }
+
+            if ( $rc & 127 )
+            {
+                util::throw(
+                    util::localize( 'Child process died with signal [_1] ‘SIG[_2]’.', $rc, $sig_names[ $rc ] )
+                );
+            }
+
+            $rc >>= 8;
+
+            if ( $opts{ throw_on_fail } )
+            {
+                util::throw(
+                    util::localize( 'Failure while executing ‘[_1]’.', ${$command}[0] . ' ' . ${$command}[1] ) .
+                    $err .
+                    "\n"
+                );
+            }
+        }
+
+        dbg::leave();
+        return $rc;
+    }
+
     # Pull subcommand from @ARGV.
     # When called from the top level, checks existence of worker
     # class by that name, and returns an instance of that class.
@@ -190,6 +268,115 @@ package util
         dbg::throw();
         local $! = $E_ERROR;
         die( $msg );
+    }
+}
+
+###################################################################
+###################################################################
+# Similar to worker::execute(), which provides combined stdout and
+# stderr of a command in scalar return values, this class gives
+# access to stdout of a command line by line (i.e., as a stream).
+#
+# $self->{ out } is a stream handle on stdout.
+# $self->{ err } is a stream handle on stderr.
+# $self->{ errors } will receive a dump of $self->{ err } when
+# $self->close_exe() is called.
+package executor
+{
+    sub run ( $command, %options )
+    {
+        dbg::enter();
+        my $out = '';
+        my $err = '';
+        my $rc;
+
+        if ( defined( $options{ 'interactive' } ) )
+        {
+            $rc = system( @{$command} );
+        }
+        else
+        {
+            ( $out, $err, $rc ) = Capture::Tiny::capture { system( @{$command} ); };
+        }
+
+        $rc = util::rc_check( $rc, $command, $err, %options );
+        dbg::leave();
+        return ( $out, $err, $rc );
+    }
+
+    # Requires the command to be executed as parameter.
+    sub new ( $class, $command )
+    {
+        dbg::enter();
+        my $self = bless( { command => $command, pid => 0, linecount => 0, err => Symbol::gensym }, $class );
+        eval
+        {
+            $self->{ pid } = IPC::Open3::open3( $self->{ in }, $self->{ out }, $self->{ err }, @{$command} );
+            1;
+        }
+        or do
+        {
+            dbg::msg( 'Exception thrown by open3()' );
+            dbg::msg( $@ );
+            util::throw(
+                util::localize( 'Failure while executing ‘[_1]’.', ${$command}[0] . ' ' . ${$command}[1] ) .
+                $! .
+                "\n" );
+        };
+
+        dbg::leave();
+        return $self;
+    }
+
+    # Writes a line of output to $_.
+    sub readln ( $self )
+    {
+        dbg::enter();
+        use Encode qw( decode );
+        my $fh = $self->{ out };
+
+        if ( defined( $_ = decode( 'UTF-8', readline( $fh ) ) ) )
+        {
+            ++$self->{ 'linecount' };
+        }
+
+        dbg::leave();
+        return $_;
+    }
+
+    # Closes the stream, writing stderr to $self->{ errors }.
+    # This is optional, as the destructor will do it anyway.
+    sub close_exe ( $self )
+    {
+        dbg::enter();
+
+        if ( $self->{ pid } != 0 )
+        {
+            my $fh = $self->{ err };
+            $self->{ errors } = do { local $/ = undef; <$fh> };
+
+            if ( length( $self->{ errors } ) > 0 )
+            {
+                dbg::msg( "Output on stderr: $self->{ errors }" );
+            }
+
+            dbg::msg( "waiting for $self->{ pid }" );
+            waitpid( $self->{ pid }, 0 );
+            $self->{ pid } = 0;
+            $self->{ rc } = util::rc_check( $?, $self->{ command }, $self->{ errors } );
+        }
+
+        dbg::leave();
+        return;
+    }
+
+    DESTROY
+    {
+        my ( $self ) = @_;
+        dbg::enter();
+        $self->close_exe();
+        dbg::leave();
+        return;
     }
 }
 
