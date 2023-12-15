@@ -23,6 +23,11 @@ allow = experimental::signatures exec
 [-ValuesAndExpressions::ProhibitConstantPragma]
 # As is using backtick notation for tput
 [-InputOutput::ProhibitBacktickOperators]
+# As is setting ANSI_COLORS_DISABLED environment variable
+[Variables::RequireLocalizedPunctuationVars]
+allow = %ENV
+# As is using subcommands as function names
+[-Subroutines::ProhibitBuiltinHomonyms]
 
 # Access to @DB::args in debugging output
 # Setting Text::Wrap::columns

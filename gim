@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.4;
+our $VERSION = v0.0.5;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -19,10 +19,12 @@ use Getopt::Long    qw( :config posix_default permute pass_through auto_version 
 use IPC::Open3      qw( open3 );
 use Scalar::Util    qw( looks_like_number reftype );
 use Symbol          qw( gensym );
+use Term::ANSIColor qw( colored coloralias colorstrip );
 use Text::Wrap;
 use Time::HiRes     qw( gettimeofday tv_interval );
 
 use constant CONFIG_DIR => $ENV{ HOME } . '/.config/gim/';
+use constant CONFIG_FILE => CONFIG_DIR . 'config.ini';
 use constant PACKAGE_DIR => CONFIG_DIR . 'perl5/';
 
 BEGIN
@@ -52,6 +54,31 @@ BEGIN
         Capture::Tiny->import( qw( :all ) );
         1;
     }
+
+    $rc = eval
+    {
+        require Config::IniFiles;
+        Config::IniFiles->import();
+        1;
+    };
+
+    if ( ! $rc )
+    {
+        make_path( PACKAGE_DIR . 'Config' );
+        system( 'curl https://raw.githubusercontent.com/shlomif/perl-Config-IniFiles/master/config-inifiles/lib/Config/IniFiles.pm -s > ' . PACKAGE_DIR . 'Config/IniFiles.pm' );
+        use lib PACKAGE_DIR;
+        require Config::IniFiles;
+        Config::IniFiles->import();
+        1;
+    }
+
+    if ( exists( $ENV{ CLICOLOR } ) && $ENV{ CLICOLOR } == 0 )
+    {
+        if ( ! $ENV{ CLICOLOR_FORCE } )
+        {
+            $ENV{ ANSI_COLORS_DISABLED } = 1;
+        }
+    }
 }
 
 ###################################################################
@@ -70,6 +97,9 @@ my %_topic; # => order, about, help
 
 my @sig_names;
 @sig_names[ split( ' ', $Config{ sig_num } ) ] = split( ' ', $Config{ sig_name } );
+
+my $cfg = util::cfg_read();
+
 ###################################################################
 ###################################################################
 package util
@@ -99,6 +129,79 @@ package util
 
         dbg::leave();
         return;
+    }
+
+    # Configuration defaults, if no config.ini is found.
+    sub cfg_defaults
+    {
+        dbg::enter();
+        my $defaults = Config::IniFiles->new();
+
+        $defaults->AddSection( 'colorscheme' );
+        $defaults->newval( 'colorscheme', 'branch',   'green' );
+        $defaults->newval( 'colorscheme', 'current',  'cyan' );
+        $defaults->newval( 'colorscheme', 'error',    'red' );
+        $defaults->newval( 'colorscheme', 'hash',     'yellow' );
+        $defaults->newval( 'colorscheme', 'header',   'bold' );
+        $defaults->newval( 'colorscheme', 'line',     'magenta' );
+        $defaults->newval( 'colorscheme', 'local',    'green' );
+        $defaults->newval( 'colorscheme', 'name',     'cyan' );
+        $defaults->newval( 'colorscheme', 'ok',       'green' );
+        $defaults->newval( 'colorscheme', 'push',     'blue' );
+        $defaults->newval( 'colorscheme', 'ref',      'cyan' );
+        $defaults->newval( 'colorscheme', 'remote',   'red' );
+        $defaults->newval( 'colorscheme', 'stash',    'yellow' );
+        $defaults->newval( 'colorscheme', 'symref',   'green' );
+        $defaults->newval( 'colorscheme', 'tag',      'yellow' );
+        $defaults->newval( 'colorscheme', 'time',     'blue' );
+        $defaults->newval( 'colorscheme', 'upstream', 'yellow' );
+        $defaults->newval( 'colorscheme', 'url',      'magenta' );
+        $defaults->newval( 'colorscheme', 'warn',     'yellow' );
+
+        $defaults->AddSection( 'options' );
+        $defaults->newval( 'options', 'impl_info', '0' );
+
+        dbg::leave();
+        return $defaults;
+    }
+
+    # Initialize the default configuration, then import config.ini
+    # to override defaults. Also, creates color aliases for all
+    # entries of [colorscheme].
+    sub cfg_read
+    {
+        dbg::enter();
+
+        # If config.ini does not exist, create empty config.ini.
+        # (Config::IniFiles->new() can handle empty file, but not
+        # non-existing file.)
+        if ( ! -e ::CONFIG_FILE )
+        {
+            my $cfgfile;
+
+            if ( ! open( $cfgfile, '>', ::CONFIG_FILE ) )
+            {
+                util::throw(
+                    util::localize( 'Could not open ‘[_1]’.', ::CONFIG_FILE ) .
+                    $!
+                );
+            }
+
+            close( $cfgfile );
+        }
+
+        # Initialize defaults, load config.ini
+        my $config = Config::IniFiles->new( -import => util::cfg_defaults(), -file => ::CONFIG_FILE, -allowempty => 1 );
+
+        # Aliassing colorscheme settings
+        foreach ( $config->Parameters( 'colorscheme' ) )
+        {
+            dbg::msg( "coloralias( '$_', '$config->val( 'colorscheme', $_ )' )" );
+            ::coloralias( $_, $config->val( 'colorscheme', $_ ) );
+        }
+
+        dbg::leave();
+        return $config;
     }
 
     # Check if the list of arguments violates the predicate
@@ -264,10 +367,123 @@ package util
     # message.
     sub throw ( $msg )
     {
-        $msg = util::localize( 'Error:' ) . $msg;
+        $msg = fmt::error( $msg );
         dbg::throw();
         local $! = $E_ERROR;
         die( $msg );
+    }
+}
+
+###################################################################
+###################################################################
+package fmt
+{
+    sub branch ( $str )
+    {
+        return ::colored( sprintf( '%-20s', $str ), substr( $str, 0, 1 ) eq '*' ? 'current' : 'branch' );
+    }
+
+    sub description ( $str )
+    {
+        return $str;
+    }
+
+    sub error ( $str )
+    {
+        return ::colored( util::localize( 'Error:' ), 'error' ) . ' ' . $str;
+    }
+
+    sub graph ( $str )
+    {
+        my $len = length( ::colorstrip( $str ) );
+        my $width = $cfg->val( 'options', 'graph_width' );
+
+        if ( $len < $width )
+        {
+            $str .= ( ' ' x ( $width - $len ) );
+        }
+
+        return ' ' . $str;
+    }
+
+    sub hash ( $str )
+    {
+        return ::colored( $str, 'hash' );
+    }
+
+    sub header ( $str )
+    {
+        return ::colored( $str, 'header' );
+    }
+
+    sub linenr ( $str )
+    {
+        return ::colored( $str, 'line' );
+    }
+
+    sub local ( $str )
+    {
+        return ::colored( sprintf( '  %-20s', $str ), 'local' );
+    }
+
+    sub name ( $str )
+    {
+        return ::colored( sprintf( '%-15.15s', $str ), 'name' );
+    }
+
+    sub ok ( $str )
+    {
+        return ::colored( util::localize( 'OK:' ), 'ok' ) . '  ' . $str;
+    }
+
+    sub push ( $str )
+    {
+        return ::colored( $str, 'push' );
+    }
+
+    sub ref ( $str )
+    {
+        return ::colored( $str, 'ref' );
+    }
+
+    sub remote ( $str )
+    {
+        return ::colored( sprintf( '%12s', $str ), 'remote' );
+    }
+
+    sub stash ( $str )
+    {
+        return ::colored( $str, 'stash' );
+    }
+
+    sub symref ( $str )
+    {
+        return ::colored( $str, 'symref' );
+    }
+
+    sub tag ( $str )
+    {
+        return ::colored( $str, 'tag' );
+    }
+
+    sub time ( $str )
+    {
+        return ::colored( sprintf( '%15s', $str ), 'time' );
+    }
+
+    sub upstream ( $str )
+    {
+        return ::colored( $str, 'upstream' );
+    }
+
+    sub url ( $str )
+    {
+        return ::colored( $str, 'url' );
+    }
+
+    sub warning ( $str )
+    {
+        return ::colored( util::localize( 'Warning:' ), 'warn' ) . ' ' . $str;
     }
 }
 
@@ -554,6 +770,7 @@ package worker
         }
         else
         {
+            $ENV{ 'ANSI_COLORS_DISABLED' } = 1;
             $self->{ out } = \*STDOUT;
         }
 
@@ -645,10 +862,10 @@ package help
         dbg::enter();
         print( {$self->{ out }}
             "\n" .
-            ' ' . util::localize( 'Usage:' ) .
+            ' ' . fmt::header( util::localize( 'Usage:' ) ) .
             ( ( @ARGV == 0 ) ? "   gim help <subcommand>\n" : "" ) .
             "   gim help <topic>\n\n" .
-            ( ( @ARGV == 0 ) ? ' ' . util::localize( 'Available subcommands:' ) . "\n" : "" )
+            ( ( @ARGV == 0 ) ? ' ' . fmt::header( util::localize( 'Available subcommands:' ) ) . "\n" : "" )
         );
 
         if ( @ARGV == 0 )
@@ -657,7 +874,7 @@ package help
             foreach my $category ( sort { $_category{ $a }{ order } <=> $_category{ $b }{ order } } keys %_category )
             {
                 print( {$self->{ out }}
-                    '   ' . util::localize( $_category{ $category }{ about } )
+                    '   ' . fmt::header( util::localize( $_category{ $category }{ about } ) )
                 );
 
                 # List the commands alphabetically
@@ -677,7 +894,7 @@ package help
         }
 
         print( {$self->{ out }}
-            ' ' . util::localize( 'Available topics:' ) .
+            ' ' . fmt::header( util::localize( 'Available topics:' ) ) .
             "\n"
         );
 
@@ -697,7 +914,7 @@ package help
         dbg::enter();
         print( {$self->{ out }}
             "\n" .
-            ' ' . $_topic{ $topic }{ about } .
+            ' ' . fmt::header( $_topic{ $topic }{ about } ) .
             "\n\n" .
             Text::Wrap::fill( ' ', ' ', $_topic{ $topic }{ help } )
         );
@@ -710,11 +927,21 @@ package help
         dbg::enter();
         print( {$self->{ out }}
             "\n" .
-            ' ' . util::localize( 'Usage:' ) .
+            ' ' . fmt::header( util::localize( 'Usage:' ) ) .
             '   ' . $_help{ $command }{ usage } .
             "\n" .
             Text::Wrap::fill( ' ', ' ', $_help{ $command }{ help } )
         );
+
+        if ( $cfg->val( 'options', 'impl_info' ) eq '1' )
+        {
+            print( {$self->{ out }}
+                "\n\n" .
+                ' ' . fmt::header( util::localize( 'Implementation:' ) ) .
+                "\n" .
+                Text::Wrap::fill( ' ', ' ', $_help{ $command }{ impl } )
+            );
+        }
 
         dbg::leave();
         return;
@@ -737,6 +964,8 @@ help topics.
 With ‘gim help <subject>’ you get help on a specific subject, which
 can be either a subcommand, or a general help topic (which are not
 linked to any specific subcommand).
+},
+    impl => q{Custom.
 }};
 
 }

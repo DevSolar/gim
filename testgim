@@ -135,7 +135,7 @@ executor::run( \@command );
 dbg::msg( '=== throw() ===' );
 ##############################
 
-assert_throw( "util::throw( \"Zero\\n\" )", "Error:\nZero\n" );
+assert_throw( "util::throw( \"Zero\\n\" )", ::colored( "Error:\n", 'red' ) . " Zero\n" );
 dbg::msg( q{>> util::localize( 'Error:' ) # expected} );
 dbg::msg( q{   Error: # expected} );
 dbg::msg( q{<<<<< # expected} );
@@ -184,34 +184,34 @@ assert_nothrow( "util::argv_check( 0, 0 )" );
 assert_nothrow( "util::argv_check( -1, -1 )" );
 assert_nothrow( "util::argv_check( -1, 0 )" );
 assert_nothrow( "util::argv_check( 0, -1 )" );
-assert_throw( "util::argv_check( 1, -1 )", "Error:\nToo few arguments.\nTry ‘gim help main’.\n" );
+assert_throw( "util::argv_check( 1, -1 )", ::colored( "Error:\n", 'red' ) . " Too few arguments.\nTry ‘gim help main’.\n" );
 local @ARGV = ( 'one' );
 assert_nothrow( "util::argv_check( 1, 1 )" );
 assert_nothrow( "util::argv_check( -1, -1 )" );
 assert_nothrow( "util::argv_check( -1, 1 )" );
 assert_nothrow( "util::argv_check( 1, -1 )" );
-assert_throw( "util::argv_check( 2, -1 )", "Error:\nToo few arguments.\nTry ‘gim help main’.\n" );
-assert_throw( "util::argv_check( -1, 0 )", "Error:\nToo many arguments.\nTry ‘gim help main’.\n" );
+assert_throw( "util::argv_check( 2, -1 )", ::colored( "Error:\n", 'red' ) . " Too few arguments.\nTry ‘gim help main’.\n" );
+assert_throw( "util::argv_check( -1, 0 )", ::colored( "Error:\n", 'red' ) . " Too many arguments.\nTry ‘gim help main’.\n" );
 
 #######################################
 dbg::msg( '=== filespec_check() ===' );
 #######################################
 
 assert_nothrow( "util::filespec_check( 'FILE', TESTDIR . '/foo' )" );
-assert_throw( "util::filespec_check( 'FILE', TESTDIR )", "Error:\n‘" . TESTDIR . "’ is not a regular file.\n" ); # not found
-assert_throw( "util::filespec_check( 'FILE', TESTDIR . '/bar' )", "Error:\n‘" . TESTDIR . "/bar’ does not exist.\n" ); # directory
-assert_throw( "util::filespec_check( 'FILE', '/dev/zero' )", "Error:\n‘/dev/zero’ is not a regular file.\n" ); # character special
-assert_throw( "util::filespec_check( 'FILE', '/proc/self' )", "Error:\n‘/proc/self’ is not a regular file.\n" ); # symlink
+assert_throw( "util::filespec_check( 'FILE', TESTDIR )", ::colored( "Error:\n", 'red' ) . " ‘" . TESTDIR . "’ is not a regular file.\n" ); # not found
+assert_throw( "util::filespec_check( 'FILE', TESTDIR . '/bar' )", ::colored( "Error:\n", 'red' ) . " ‘" . TESTDIR . "/bar’ does not exist.\n" ); # directory
+assert_throw( "util::filespec_check( 'FILE', '/dev/zero' )", ::colored( "Error:\n", 'red' ) . " ‘/dev/zero’ is not a regular file.\n" ); # character special
+assert_throw( "util::filespec_check( 'FILE', '/proc/self' )", ::colored( "Error:\n", 'red' ) . " ‘/proc/self’ is not a regular file.\n" ); # symlink
 assert_nothrow( "util::filespec_check( 'FILEORDIR', TESTDIR . '/foo' )" );
 assert_nothrow( "util::filespec_check( 'FILEORDIR', TESTDIR )" );
-assert_throw( "util::filespec_check( 'FILEORDIR', TESTDIR . '/bar' )", "Error:\n‘" . TESTDIR . "/bar’ does not exist.\n" ); # not found
-assert_throw( "util::filespec_check( 'FILEORDIR', '/dev/zero' )", "Error:\n‘/dev/zero’ is neither regular file nor directory.\n" ); # character special
-assert_throw( "util::filespec_check( 'FILEORDIR', '/proc/self' )", "Error:\n‘/proc/self’ is neither regular file nor directory.\n" ); # symlink
+assert_throw( "util::filespec_check( 'FILEORDIR', TESTDIR . '/bar' )", ::colored( "Error:\n", 'red' ) . " ‘" . TESTDIR . "/bar’ does not exist.\n" ); # not found
+assert_throw( "util::filespec_check( 'FILEORDIR', '/dev/zero' )", ::colored( "Error:\n", 'red' ) . " ‘/dev/zero’ is neither regular file nor directory.\n" ); # character special
+assert_throw( "util::filespec_check( 'FILEORDIR', '/proc/self' )", ::colored( "Error:\n", 'red' ) . " ‘/proc/self’ is neither regular file nor directory.\n" ); # symlink
 assert_nothrow( "util::filespec_check( 'TRACKED', 'gim' )" );
 assert_nothrow( "util::filespec_check( 'TRACKED', '.' )" );
-assert_throw( "util::filespec_check( 'TRACKED', TESTDIR . '/foo' )", "Error:\n‘" . TESTDIR . "/foo’ is not under version control.\n" );
-assert_throw( "util::filespec_check( 'TRACKED', TESTDIR . '/bar' )", "Error:\n‘" . TESTDIR . "/bar’ does not exist.\n" );
-assert_throw( "util::filespec_check( 'TRACKED', TESTDIR )", "Error:\n‘" . TESTDIR . "’ is not under version control.\n" );
+assert_throw( "util::filespec_check( 'TRACKED', TESTDIR . '/foo' )", ::colored( "Error:\n", 'red' ) . " ‘" . TESTDIR . "/foo’ is not under version control.\n" );
+assert_throw( "util::filespec_check( 'TRACKED', TESTDIR . '/bar' )", ::colored( "Error:\n", 'red' ) . " ‘" . TESTDIR . "/bar’ does not exist.\n" );
+assert_throw( "util::filespec_check( 'TRACKED', TESTDIR )", ::colored( "Error:\n", 'red' ) . " ‘" . TESTDIR . "’ is not under version control.\n" );
 
 ###############################
 dbg::msg( '=== executor ===' );
@@ -219,7 +219,7 @@ dbg::msg( '=== executor ===' );
 
 @command = ( 'nosuchcommand', 'nosucharg' );
 eval { $exe = executor->new( \@command ); 1; }
-    or do { assert_like( $@, qr/Error:\nFailure while executing ‘nosuchcommand nosucharg’/ ); };
+    or do { assert_like( $@, qr/.*Error:\n.*Failure while executing ‘nosuchcommand nosucharg’/ ); };
 @command = ( '/usr/bin/echo', '-e', '1\n2\n3\n4' );
 $exe = executor->new( \@command );
 $rc = 1;
@@ -250,6 +250,67 @@ assert_is( $rc, 0 );
 assert_is( $out, '' );
 assert_is( $err, "1\n2\n3\n4\n" );
 assert_is( $rc, 0 );
+
+##########################
+dbg::msg( '=== cfg ===' );
+##########################
+
+my $config_test = Config::IniFiles->new( -import => util::cfg_defaults() );
+
+assert_is( $config_test->val( 'colorscheme', 'branch' ), 'green' );
+assert_is( $config_test->val( 'colorscheme', 'current' ), 'cyan' );
+assert_is( $config_test->val( 'colorscheme', 'error' ), 'red' );
+assert_is( $config_test->val( 'colorscheme', 'hash' ), 'yellow' );
+assert_is( $config_test->val( 'colorscheme', 'header' ), 'bold' );
+assert_is( $config_test->val( 'colorscheme', 'line' ), 'magenta' );
+assert_is( $config_test->val( 'colorscheme', 'local' ), 'green' );
+assert_is( $config_test->val( 'colorscheme', 'name' ), 'cyan' );
+assert_is( $config_test->val( 'colorscheme', 'ok' ), 'green' );
+assert_is( $config_test->val( 'colorscheme', 'push' ), 'blue' );
+assert_is( $config_test->val( 'colorscheme', 'ref' ), 'cyan' );
+assert_is( $config_test->val( 'colorscheme', 'remote' ), 'red' );
+assert_is( $config_test->val( 'colorscheme', 'stash' ), 'yellow' );
+assert_is( $config_test->val( 'colorscheme', 'symref' ), 'green' );
+assert_is( $config_test->val( 'colorscheme', 'tag' ), 'yellow' );
+assert_is( $config_test->val( 'colorscheme', 'time' ), 'blue' );
+assert_is( $config_test->val( 'colorscheme', 'upstream' ), 'yellow' );
+assert_is( $config_test->val( 'colorscheme', 'url' ), 'magenta' );
+assert_is( $config_test->val( 'colorscheme', 'warn' ), 'yellow' );
+
+assert_is( $config_test->val( 'options', 'impl_info' ), '0' );
+
+write_to_file( TESTDIR . '/testcfg.ini', "[category]\nentry=value\n[options]\ndiff=-q\n" );
+$config_test = Config::IniFiles->new( -import => util::cfg_defaults(), -file => TESTDIR . '/testcfg.ini', -allowempty => 1 );
+
+assert_is( $config_test->val( 'category', 'entry' ), 'value' );
+assert_is( $config_test->val( 'options', 'diff' ), '-q' );
+assert_is( $config_test->val( 'options', 'empty' ), undef );
+
+##########################
+dbg::msg( '=== fmt ===' );
+##########################
+
+assert_is( fmt::branch( 'foo' ), ::colored( 'foo                 ', 'green' ) );
+assert_is( fmt::branch( '* foo' ), ::colored( '* foo               ', 'cyan' ) );
+assert_is( fmt::description( 'foo' ), 'foo' );
+assert_is( fmt::error( 'foo' ), ::colored( "Error:\n", 'red' ) . ' foo' );
+assert_is( fmt::hash( 'foo' ), ::colored( 'foo', 'yellow' ) );
+assert_is( fmt::header( 'foo' ), ::colored( 'foo', 'bold' ) );
+assert_is( fmt::linenr( 'foo' ), ::colored( 'foo', 'magenta' ) );
+assert_is( fmt::local( 'foo' ), ::colored( '  foo                 ', 'green' ) );
+assert_is( fmt::name( 'Long Name' ), ::colored( 'Long Name      ', 'cyan' ) );
+assert_is( fmt::name( 'A really long name' ), ::colored( 'A really long n', 'cyan' ) );
+assert_is( fmt::ok( 'foo' ), ::colored( "OK:\n", 'green' ) . '  foo' );
+assert_is( fmt::push( 'foo' ), ::colored( 'foo', 'blue' ) );
+assert_is( fmt::ref( 'foo' ), ::colored( 'foo', 'cyan' ) );
+assert_is( fmt::remote( 'foo' ), ::colored( '         foo', 'red' ) );
+assert_is( fmt::stash( 'foo' ), ::colored( 'foo', 'yellow' ) );
+assert_is( fmt::symref( 'foo' ), ::colored( 'foo', 'green' ) );
+assert_is( fmt::tag( 'foo' ), ::colored( 'foo', 'yellow' ) );
+assert_is( fmt::time( 'foo' ), ::colored( '            foo', 'blue' ) );
+assert_is( fmt::upstream( 'foo' ), ::colored( 'foo', 'yellow' ) );
+assert_is( fmt::url( 'foo' ), ::colored( 'foo', 'magenta' ) );
+assert_is( fmt::warning( 'foo' ), ::colored( "Warning:\n", 'yellow' ) . ' foo' );
 
 ############################
 dbg::msg( '=== Done. ===' );
