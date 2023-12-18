@@ -44,3 +44,4 @@ add_packages = DB Text::Wrap
 
 # I like Perl regexes the way they are, thank you very much
 [-RegularExpressions::RequireExtendedFormatting]
+[-RegularExpressions::ProhibitComplexRegexes]

@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.5;
+our $VERSION = v0.0.6;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -160,6 +160,8 @@ package util
 
         $defaults->AddSection( 'options' );
         $defaults->newval( 'options', 'impl_info', '0' );
+        $defaults->newval( 'options', 'hash_length', '8' );
+        $defaults->newval( 'options', 'graph_width', '6' );
 
         dbg::leave();
         return $defaults;
@@ -597,6 +599,44 @@ package executor
 }
 
 ###################################################################
+package logger
+{
+    use parent -norequire => 'executor';
+
+    sub new ( $class, $logspecs )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'log', '--color=always', '--decorate-refs=HEAD', '--decorate-refs=refs/heads', '--decorate-refs=refs/remotes', '--decorate-refs=refs/stash', '--decorate-refs=refs/tags', '--date-order', '--abbrev=' . $cfg->val( 'options', 'hash_length' ), '--pretty=format:%h%aN%ar%ai%cN%cr%ci%s%C(auto)%d', @{$logspecs} );
+        my $self = $class->SUPER::new( \@command );
+        dbg::leave();
+        return $self;
+    }
+
+    sub readln_fmt ( $self )
+    {
+        dbg::enter();
+
+        if ( defined( $self->SUPER::readln() ) )
+        {
+            chomp;
+            # my ( $graph, $hash, $authorName, $authorTimeRel, $authorTimeIso, $commitName, $commitTimeRel, $commitTimeIso, $subject, $description ) = @{$_};
+            my @elements = ( $_ );
+
+            if ( m// )
+            {
+                @elements = ( m/([^]*)([^]*)([^]*)([^]*)([^]*)([^]*)([^]*)([^]*)([^]*)([^]*)/ );
+                dbg::msg( "$elements[0]-$elements[1]" );
+            }
+
+            $_ = \@elements;
+        }
+
+        dbg::leave();
+        return $_;
+    }
+}
+
+###################################################################
 ###################################################################
 package dbg
 {
@@ -750,6 +790,15 @@ package worker
 
         dbg::leave();
         return $self;
+    }
+
+    sub init_git_dir ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'rev-parse', '--git-dir' );
+        ( $self->{ git_dir }, my $err, my $rc ) = executor::run( \@command );
+        dbg::leave();
+        return;
     }
 
     sub init_pager ( $self )
@@ -966,6 +1015,116 @@ can be either a subcommand, or a general help topic (which are not
 linked to any specific subcommand).
 },
     impl => q{Custom.
+}};
+
+}
+
+###################################################################
+package log
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_pager();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $print_graph;
+        my @specs = ();
+        my $predefined = 0;
+        ::GetOptions(
+            "all|a" => sub { push( @specs, '--all' ); },
+            "short|s" => sub { push( @specs, '--format=short' ); $predefined = 1; },
+            "medium|m" => sub { push( @specs, '--format=medium' ); $predefined = 1; },
+            "long|l" => sub { push( @specs, '--format=full' ); $predefined = 1; },
+            "verbose|v" => sub { push( @specs, '--format=fuller' ); $predefined = 1; },
+            "reference|r" => sub { push( @specs, '--format=reference' ); $predefined = 1; },
+            "graph|g" => sub { push( @specs, '--graph' ); $print_graph = 1; }
+        );
+
+        push( @specs, @ARGV );
+        my $log = logger->new( \@specs );
+
+        while ( $predefined ? $log->readln() : $log->readln_fmt() )
+        {
+            my $line;
+
+            if ( $predefined )
+            {
+                # Predefined format, leave alone
+                chomp;
+                $line = $_ . "\n";
+            }
+            else
+            {
+                # Custom format
+                if ( scalar( @{$_} ) == 1 )
+                {
+                    $line = ' ' . ${$_}[0] . "\n";
+                }
+                else
+                {
+                    my ( $graph, $hash, $authorName, $authorTimeRel, $authorTimeIso, $commitName, $commitTimeRel, $commitTimeIso, $subject, $description ) = @{$_};
+                    $line =
+                        ( $print_graph ? fmt::graph( $graph ) : ' ' ) .
+                        fmt::hash( $hash ) . '  ' .
+                        fmt::time( $authorTimeIso ) . '  ' .
+                        fmt::name( $authorName ) . '  ' .
+                        $subject . '  ' .
+                        fmt::description( $description ) . '  ' .
+                        "\n";
+                }
+            }
+
+            print( {$self->{ out }} $line );
+        }
+
+        $log->close_exe();
+        dbg::leave();
+        return;
+    }
+
+$_help{ log } =
+{
+    category => q{info},
+    about => q{Show a commit log},
+    usage => q{gim log [option]
+},
+    help => q{Show a commit log.
+
+By default, shows a one-line format containing relative time,
+author information, commit summary, and tree references.
+
+The ‘--graph’ / ‘-g’ option adds a branch graph to the output of
+any log output.
+
+The remaining options correspond to predefined log formats
+generated by the Git backend.
+
+The options ‘--reference’ / ‘-r’, ‘--short’ / ‘-s’, and ‘--medium’
+/ ‘-m’ correspond to the ‘git log --format=...’ options of the same
+name.
+
+The ‘--long’ / ‘-l’ option corresponds to ‘git log --format=full’.
+
+The ‘--verbose’ / ‘-v’ option corresponds to ‘git log --format=fuller’.
+
+The ‘--tags / -t’ option shows (both lightweight and annotated) tags.
+
+The ‘--all / -a’ option shows a log of all branches, not just the
+current one.
+},
+    impl => q{‘git log --date-order’, with ‘--decorate-refs=...’ for
+‘HEAD’, ‘refs/heads’, ‘refs/remotes’, and ‘refs/stash’ respectively.
+
+Output is reformatted for readability.
 }};
 
 }
