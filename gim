@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.7;
+our $VERSION = v0.0.8;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -905,6 +905,108 @@ Git does not store empty directories), but does not generate an
 error either.
 },
     impl => q{git add --intent-to-add --no-all -- [...]
+}};
+
+}
+
+###################################################################
+package commit
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_pager();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $amend;
+        my $patch;
+        my $file;
+        my $msg;
+        ::GetOptions(
+            'amend' => \$amend,
+            'patch' => \$patch,
+            'file|F=s' => \$file,
+            'message|m=s' => \$msg
+        );
+
+        if ( defined( $file ) && defined( $msg ) )
+        {
+            util::throw(
+                util::localize( 'Conflicting options ‘[_1]’ and ‘[_2]’.', '--file', '--message' )
+            );
+        }
+
+        my @command = ( 'git', 'commit', '--quiet' );
+
+        if ( defined( $amend ) )
+        {
+            push( @command, '--amend' );
+        }
+
+        if ( defined( $patch ) )
+        {
+            push( @command, '--patch' );
+        }
+
+        if ( defined( $file ) )
+        {
+            push( @command, '--file', $file );
+        }
+
+        if ( defined( $msg ) )
+        {
+            push( @command, '--message', $msg );
+        }
+
+        if ( @ARGV )
+        {
+            util::filespec_check( 'TRACKED', @ARGV );
+            push( @command, '--', @ARGV );
+        }
+        else
+        {
+            push( @command, '--all' );
+        }
+
+        executor::run( \@command, interactive => ! ( defined( $file ) || defined( $msg ) ) );
+        dbg::leave();
+        return;
+    }
+
+$_help{ commit } =
+{
+    category => q{local},
+    about => q{Commit changes to local repository},
+    usage => q{gim commit [--amend] [--patch] [<filespec> ...]
+   gim commit [--amend] [--patch] [--message | -m <msg>] [<filespec> ...]
+   gim commit [--amend] [--patch] [--file | -F <filename>] [<filespec> ...]
+},
+    help => q{Commit changes to the local repository.
+
+The first variant opens an editor for you to enter the commit
+message.
+
+The second variant uses the passed string as the commit message.
+
+The third variant uses the contents of the specified file as the
+commit message.
+
+If the ‘--amend’ option is specified, the last commit (which must
+not have been published yet) will be amended instead of creating a
+new commit.
+
+If the ‘--patch’ option is specified, the user will be queried
+which parts of the file(s) he wants to commit.
+},
+    impl => q{‘git commit [...]’, with ‘--all’ assumed if no files
+are specified.
 }};
 
 }

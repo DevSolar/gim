@@ -358,6 +358,35 @@ $val = add->new();
 assert_nothrow( '$val->run()' );
 undef( $val );
 
+#############################
+dbg::msg( '=== commit ===' );
+#############################
+
+local @ARGV = ( '-m', 'commit main.c', 'main.c' );
+$val = commit->new();
+assert_nothrow( '$val->run()' );
+undef( $val );
+@command = ( 'git', 'status', '--porcelain' );
+( $out, $err, $rc ) = executor::run( \@command );
+assert_is( $out, " A \"file name with\\nwhitespace\"\n A foo/.config\n A foo/foo.c\n" );
+local @ARGV = ( 'foo', '--message', 'commit foo' );
+$val = commit->new();
+assert_nothrow( '$val->run()' );
+undef( $val );
+@command = ( 'git', 'status', '--porcelain' );
+( $out, $err, $rc ) = executor::run( \@command );
+assert_is( $out, " A \"file name with\\nwhitespace\"\n" );
+write_to_file( 'commit_msg', 'commit all' );
+local @ARGV = ( '-F', 'commit_msg' );
+$val = commit->new();
+assert_nothrow( '$val->run()' );
+local @ARGV = ( 'bar' );
+$val = commit->new();
+assert_throw( '$val->run()', ::colored( "Error:\n", 'red' ) . " ‘bar’ is not under version control.\n" );
+local @ARGV = ( 'baz' );
+$val = commit->new();
+assert_throw( '$val->run()', ::colored( "Error:\n", 'red' ) . " ‘baz’ does not exist.\n" );
+
 ############################
 dbg::msg( '=== Done. ===' );
 ############################
