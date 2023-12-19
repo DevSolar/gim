@@ -44,6 +44,7 @@ require './gim';
 
 ########################################
 
+my $str;
 my $val;
 my $exe;
 my $out;
@@ -311,6 +312,51 @@ assert_is( fmt::time( 'foo' ), ::colored( '            foo', 'blue' ) );
 assert_is( fmt::upstream( 'foo' ), ::colored( 'foo', 'yellow' ) );
 assert_is( fmt::url( 'foo' ), ::colored( 'foo', 'magenta' ) );
 assert_is( fmt::warning( 'foo' ), ::colored( "Warning:\n", 'yellow' ) . ' foo' );
+
+##########################
+dbg::msg( '=== add ===' );
+##########################
+
+@command = ( 'git', 'init', '--bare', TESTDIR . '/repo' );
+executor::run( \@command );
+@command = ( 'git', 'clone', TESTDIR . '/repo', TESTDIR . '/work' );
+executor::run( \@command );
+$str = TESTDIR . '/work';
+chdir( $str );
+write_to_file( 'main.c', "int main( void )\n{\n    return 0;\n}\n" );
+write_to_file( "file name with\nwhitespace", 'Funny filename business.' );
+local @ARGV = ( 'main.c' );
+$val = add->new();
+assert_nothrow( '$val->run()' );
+undef( $val );
+mkdir( 'foo' );
+chdir( 'foo' );
+write_to_file( 'foo.c', "int foo( void )\n{\n    return 42;\n}\n" );
+write_to_file( '.config', "foo = bar\n" );
+chdir( '..' );
+local @ARGV = ( '.' );
+$val = add->new();
+assert_nothrow( '$val->run()' );
+undef( $val );
+@command = ( 'git', 'status', '--porcelain' );
+( $out, $err, $rc ) = executor::run( \@command );
+assert_is( $out, " A \"file name with\\nwhitespace\"\n A foo/.config\n A foo/foo.c\n A main.c\n" );
+local @ARGV = ( 'main.c', 'foo/.config' );
+$val = add->new();
+assert_nothrow( '$val->run()' );
+undef( $val );
+@command = ( 'git', 'status', '--porcelain' );
+( $out, $err, $rc ) = executor::run( \@command );
+assert_is( $out, " A \"file name with\\nwhitespace\"\n A foo/.config\n A foo/foo.c\n A main.c\n" );
+local @ARGV = ( 'bar.c' );
+$val = add->new();
+assert_throw( '$val->run()', ::colored( "Error:\n", 'red' ) . " ‘bar.c’ does not exist.\n" );
+undef( $val );
+mkdir( 'bar' );
+local @ARGV = ( 'bar' );
+$val = add->new();
+assert_nothrow( '$val->run()' );
+undef( $val );
 
 ############################
 dbg::msg( '=== Done. ===' );
