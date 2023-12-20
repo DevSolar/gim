@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.15;
+our $VERSION = v0.0.16;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1443,6 +1443,48 @@ Creates a new branch, including switching to it.
 },
     impl => q{Currently really just a dummy forwarding to ‘git
 branch -- [...]’, followed by ‘git switch -- [...]’.
+}};
+
+}
+
+###################################################################
+package mv
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my @from_specs = @ARGV;
+        pop( @from_specs );
+        util::filespec_check( 'TRACKED', @from_specs );
+        my @command = ( 'git', 'mv', '--', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+$_help{ mv } =
+{
+    category => q{local},
+    about => q{Move / rename file(s)},
+    usage => q{gim mv <filespec> <filespec>
+   gim mv <filespec> [<filespec> ...] <dirspec>
+},
+    help => q{Move / rename file(s).
+
+Moves / renames a file, or moves multiple files to a target
+directory.
+},
+    impl => q{Wrapper for ‘git mv --’.
 }};
 
 }
