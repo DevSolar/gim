@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.16;
+our $VERSION = v0.0.17;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -905,6 +905,81 @@ Git does not store empty directories), but does not generate an
 error either.
 },
     impl => q{git add --intent-to-add --no-all -- [...]
+}};
+
+}
+
+###################################################################
+package blame
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_pager();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        util::filespec_check( 'TRACKED', @ARGV );
+        my @command = ( 'git', 'blame', @ARGV );
+        my $exe = executor->new( \@command );
+        my $lasthash = '';
+        my $linecol = 0;
+
+        while ( $exe->readln() )
+        {
+            if ( m/^([[:xdigit:]^]*) (.*)\((.*?) (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} .\d{4})( *\d*)\)(.*)/ )
+            {
+                if ( $1 ne $lasthash )
+                {
+                    $linecol = ( $linecol ) ? 0 : 1;
+                }
+
+                printf( {$self->{ out }}
+                    "%s %s%s %s%s)%s\n",
+                    fmt::hash( $1 ),
+                    $2,
+                    fmt::name( $3 ),
+                    fmt::time( $4 ),
+                    ( $linecol ) ? fmt::linenr( $5 ) : $5,
+                    $6
+                );
+
+                $lasthash = $1;
+            }
+            else
+            {
+                util::throw(
+                    util::localize( 'Unexpected output by git:' ) .
+                    $_
+                );
+            }
+        }
+
+        $exe->close_exe();
+        dbg::leave();
+        return;
+    }
+
+$_help{ blame } =
+{
+    category => q{info},
+    about => q{Show who authored what in a file},
+    usage => q{gim blame ...
+},
+    help => q{Show who authored what in a file.
+
+Annotates each line of a given source file with information on who
+modified it last, when, and with which commit.
+},
+    impl => q{A thin layer around ‘git blame’, adding coloring to
+the line number column to highlight block changes.
 }};
 
 }
