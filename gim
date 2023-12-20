@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.14;
+our $VERSION = v0.0.15;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1500,6 +1500,52 @@ option, untracked files will be deleted as well.
 [...]’.
 
 The ‘--clean’ option adds ‘git clean --force -d --quiet [...]’.
+}};
+
+}
+
+###################################################################
+package rm
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'rm' );
+        ::GetOptions(
+            'recurse|r' => sub { push( @command, '-r' ); },
+            'force|f' => sub { push( @command, '-f' ); }
+        );
+        util::filespec_check( 'TRACKED', @ARGV );
+        push( @command, '--', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+$_help{ rm } =
+{
+    category => q{local},
+    about => q{Remove file(s) from version control},
+    usage => q{gim rm [--recurse|-r] [--force|-f] <filespec> [<filespec> ...]
+},
+    help => q{Remove file(s) from version control.
+
+Removes one or more files from version control. If one or more of
+the given <filespec> refers to a directory, the ‘--recurse’ / ‘-r’
+option is required to remove all the directory contents from version
+control.
+},
+    impl => q{A wrapper for ‘git rm’.
 }};
 
 }
