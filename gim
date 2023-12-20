@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.13;
+our $VERSION = v0.0.14;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1500,6 +1500,61 @@ option, untracked files will be deleted as well.
 [...]’.
 
 The ‘--clean’ option adds ‘git clean --force -d --quiet [...]’.
+}};
+
+}
+
+###################################################################
+package rmbranch
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my @command = ();
+        my $remote;
+        ::GetOptions(
+            'remote|r=s' => \$remote
+        );
+
+        if ( defined( $remote ) )
+        {
+            @command = ( 'git', 'push', $remote, '--delete', $ARGV[0] );
+        }
+        else
+        {
+            @command = ( 'git', 'branch', '--delete', '--force', '--', $ARGV[0] );
+        }
+
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+$_help{ rmbranch } =
+{
+    category => q{local},
+    about => q{Remove a branch},
+    usage => q{gim rmbranch <branch>
+   gim rmbranch [--remote | -r <remote>] <branch>
+},
+    help => q{Remove a branch.
+
+Removes a branch. By default this applies to the local repository.
+With the ‘--remote’ option, a branch can be deleted from a remote
+repository.
+},
+    impl => q{A wrapper for ‘git branch --delete --force -- [...]’
+or ‘git push [...] --delete [...]’ respectively.
 }};
 
 }
