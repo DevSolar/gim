@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.12;
+our $VERSION = v0.0.13;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1403,6 +1403,46 @@ current one.
 ‘HEAD’, ‘refs/heads’, ‘refs/remotes’, and ‘refs/stash’ respectively.
 
 Output is reformatted for readability.
+}};
+
+}
+
+###################################################################
+package mkbranch
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'branch', '--', $ARGV[0] );
+        executor::run( \@command );
+        $command[1] = 'switch';
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+$_help{ mkbranch } =
+{
+    category => q{local},
+    about => q{Create a new branch},
+    usage => q{gim mkbranch <branch>
+},
+    help => q{Create a new branch.
+
+Creates a new branch, including switching to it.
+},
+    impl => q{Currently really just a dummy forwarding to ‘git
+branch -- [...]’, followed by ‘git switch -- [...]’.
 }};
 
 }
