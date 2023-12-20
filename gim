@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.10;
+our $VERSION = v0.0.11;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1236,6 +1236,63 @@ can be either a subcommand, or a general help topic (which are not
 linked to any specific subcommand).
 },
     impl => q{Custom.
+}};
+
+}
+
+###################################################################
+package init
+{
+    use parent -norequire => 'worker';
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $local = 0;
+        ::GetOptions(
+            'local|l' => sub { $local = 1; },
+            'bare|b' => sub { $local = 0; }
+        );
+        my $repo = shift( @ARGV );
+
+        if ( -e $repo )
+        {
+            util::throw(
+                util::localize( '‘[_1]’ already exists.', $repo )
+            );
+        }
+
+        my @command = ( 'git', 'init', '--quiet' );
+
+        if ( $local != 1 )
+        {
+            push( @command, '--bare' );
+        }
+
+        push( @command, '--', $repo );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+$_help{ init } =
+{
+    category => q{local},
+    about => q{Initialize a new repository},
+    usage => q{gim init [--bare|-b] <filespec>
+   gim init <--local|-l> <filespec>
+},
+    help => q{Initialize a new repository.
+
+With the option ‘--bare’ (the default), the new repository will
+have no working directory; its purpose will be to be cloned, with
+actual work being done in the clones.
+
+With the option ‘--local’, a local repository including working
+directory will be set up. This is only recommended for strictly
+local use, i.e. for repositories that will not be cloned.
+},
+    impl => q{git init --quiet [--bare] -- [...]
 }};
 
 }
