@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.11;
+our $VERSION = v0.0.12;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1403,6 +1403,63 @@ current one.
 ‘HEAD’, ‘refs/heads’, ‘refs/remotes’, and ‘refs/stash’ respectively.
 
 Output is reformatted for readability.
+}};
+
+}
+
+###################################################################
+package revert
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $clean;
+        ::GetOptions(
+            'clean|c' => \$clean
+        );
+        my @command = ( 'git', 'reset', '--', @ARGV );
+        executor::run( \@command );
+        $command[1] = 'restore';
+        # This silences all fails, but is necessary to avoid errors
+        # when the adding of files has been reset. A better choice
+        # would be checking @ARGV for files that are still tracked.
+        executor::run( \@command, throw_on_fail => 0 );
+
+        if ( defined( $clean ) )
+        {
+            splice( @command, 1, 1, 'clean', '--force', '-d', '--quiet' );
+            executor::run( \@command );
+        }
+
+        dbg::leave();
+        return;
+    }
+
+$_help{ revert } =
+{
+    category => q{local},
+    about => q{Revert local changes},
+    usage => q{gim revert [--clean|-c] <filespec> [<filespec> ...]
+},
+    help => q{Revert local changes.
+
+Reverts local changes to the checked-in state. With the ‘--clean’
+option, untracked files will be deleted as well.
+},
+    impl => q{‘git reset -- [...]’ followed by ‘git restore --
+[...]’.
+
+The ‘--clean’ option adds ‘git clean --force -d --quiet [...]’.
 }};
 
 }
