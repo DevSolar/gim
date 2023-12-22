@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.17;
+our $VERSION = v0.0.18;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -162,6 +162,7 @@ package util
         $defaults->newval( 'options', 'impl_info', '0' );
         $defaults->newval( 'options', 'hash_length', '8' );
         $defaults->newval( 'options', 'graph_width', '6' );
+        $defaults->newval( 'options', 'diff', '-U3' );
 
         dbg::leave();
         return $defaults;
@@ -1152,6 +1153,61 @@ which parts of the file(s) he wants to commit.
 },
     impl => q{‘git commit [...]’, with ‘--all’ assumed if no files
 are specified.
+}};
+
+}
+
+###################################################################
+package diff
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        $self->init_pager();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $opts = $cfg->val( 'options', 'diff' );
+        my @command = ( 'git', 'diff', '--color=always', '--src-prefix=src: ', '--dst-prefix=dst: ', $cfg->val( 'options', 'diff' ), @ARGV );
+        my $exe = executor->new( \@command );
+
+        while ( $exe->readln() )
+        {
+            print( {$self->{ out }} $_ );
+        }
+
+        $exe->close_exe();
+        dbg::leave();
+        return;
+    }
+
+$_help{ diff } =
+{
+    category => q{info},
+    about => q{Show differences},
+    usage => q{gim diff [<revspec>] [<filespec> [<filespec> ...]]
+},
+    help => q{Shows differences between commits, commits and the
+working copy, etc.
+
+By default shows the difference of the working directory to the
+latest commit. By specifying a single revspec, shows the difference
+of the working directory to that revspec instead. By specifying two
+revspecs, shows the difference between the two revspecs.
+
+By specifying filespecs, limits the diffs shown to those in the
+specified files.
+},
+    impl => q{‘git diff [...]’, with prefixes ‘src:’ and ‘dst:’
+instead of ‘a/’ and ‘b/’, and honoring options.diff from the config
+file (defaulting to ‘-U3’).
 }};
 
 }
