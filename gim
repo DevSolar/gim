@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.18;
+our $VERSION = v0.0.19;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1774,6 +1774,184 @@ repository.
 },
     impl => q{A wrapper for ‘git branch --delete --force -- [...]’
 or ‘git push [...] --delete [...]’ respectively.
+}};
+
+}
+
+###################################################################
+package stash
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_pager();
+        $self->init_status();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $command = util::subcommand( 'push' );
+        $self->$command();
+        dbg::leave();
+        return;
+    }
+
+    sub apply ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'stash', 'apply', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    sub branch ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'stash', 'branch', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    sub clear ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'stash', 'clear', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    sub drop ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'stash', 'drop', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    sub list ( $self )
+    {
+        dbg::enter();
+        printf( {$self->{ out }} ' ' . util::localize( 'Stashed:' ) );
+
+        if ( ! defined( $self->{ stash } ) )
+        {
+            printf( {$self->{out}} '    ' . fmt::stash( util::localize( 'None' ) ) );
+            return;
+        }
+
+        my @command = ( 'git', 'stash', 'list', @ARGV );
+        my $exe = executor->new( \@command );
+
+        while ( $exe->readln() )
+        {
+            my ( $id, $branch, $commit, $msg ) = ( m/stash\@\{(.*)\}: WIP on ([^:]*): ([a-f0-9]*) (.*)/ );
+
+            if ( defined( $commit ) )
+            {
+                $msg = fmt::hash( $commit ) . ' ' . $msg;
+            }
+            else
+            {
+                ( $id, $branch, $msg ) = ( m/stash\@\{(.*)\}: On ([^:]*): (.*)/ );
+            }
+
+            printf( {$self->{ out }}
+                "    %s: %s: %s\n",
+                fmt::stash( $id ),
+                fmt::branch( $branch ),
+                $msg
+            );
+        }
+
+        $exe->close_exe();
+        dbg::leave();
+        return;
+    }
+
+    sub pop ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'stash', 'pop', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    sub push ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'stash', 'push', '--include-untracked', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    sub show ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'stash', 'show', '--include-untracked', '--patch', @ARGV );
+        my $exe = executor->new( \@command );
+
+        while ( $exe->readln() )
+        {
+            print( {$self->{ out }} $_ );
+        }
+
+        $exe->close_exe();
+        dbg::leave();
+        return;
+    }
+
+$_help{ stash } =
+{
+    category => q{local},
+    about => q{Stash away local changes},
+    usage => q{gim stash push ...
+   gim stash list ...
+   gim stash show ...
+   gim stash drop ...
+   gim stash clear ...
+   gim stash apply ...
+   gim stash pop ...
+   gim stash branch ...
+},
+    help => q{Stash away local changes.
+
+The following subcommands are available:
+
+ * push   -- Push local commits on the stash stack.
+
+ * list   -- List the stash stack.
+
+ * show   -- Inspect one entry on the stash stack.
+
+ * drop   -- Remove an entry from the stash stack.
+
+ * clear  -- Remove all entries from the stash stack.
+
+ * apply  -- Apply an entry from the stash stack to the working directory.
+
+ * pop    -- As ‘apply’, but removes the entry from the stash stack if applying did not result in errors.
+
+ * branch -- Turn a stash entry into a new branch.
+},
+    impl => q{Mostly just a wrapper for ‘git stash [...]’ with
+‘push’ being made the implicit default.
+
+The ‘push’ subcommand adds ‘--include-untracked’.
+
+The ‘list’ command uses a more readable format.
+
+The ‘show’ command adds ‘-p’.
 }};
 
 }
