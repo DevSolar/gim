@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.21;
+our $VERSION = v0.0.22;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -2175,6 +2175,83 @@ The ‘push’ subcommand adds ‘--include-untracked’.
 The ‘list’ command uses a more readable format.
 
 The ‘show’ command adds ‘-p’.
+}};
+
+}
+
+###################################################################
+package switch
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'switch' );
+        ::GetOptions(
+            'detach|d' => sub { push( @command, '--detach' ); }
+        );
+        util::argv_check( 1, 1 );
+        push( @command, '--', $ARGV[0] );
+        my ( $out, $err, $rc ) = executor::run( \@command );
+
+        if ( $rc == 128 )
+        {
+            @command = ( 'git', 'rev-parse', $ARGV[0] . '^{commit]' );
+            ( $out, $err, $rc ) = executor::run( \@command );
+
+            if ( $rc == 0 )
+            {
+                util::throw(
+                    util::localize( '‘[_1]’ is a commit, not a branch. Forgot ‘--detach’?', $ARGV[0] ) .
+                    util::localize( 'Try ‘[_1]’.', 'gim help switch' )
+                );
+            }
+        }
+
+        if ( $rc != 0 )
+        {
+            util::throw(
+                util::localize( 'Failure while executing ‘[_1]’.', 'gim switch' ) .
+                util::localize( '‘[_1]’ returned ‘[_2]’:', 'gim switch', $rc ) .
+                $err . "\n"
+            );
+        }
+
+        dbg::leave();
+        return;
+    }
+
+$_help{ switch } =
+{
+    category => q{local},
+    about => q{Switch HEAD to a different commit},
+    usage => q{gim switch <branch>
+   gim switch [--detach|-d] <commit|tag>
+   gim switch -
+},
+    help => q{Switch HEAD to a different commit.
+
+The first variant switches your HEAD to a different branch.
+
+The second variant switches your HEAD to a specific commit. This
+leaves you in “detached HEAD” state, which is why it requires the
+extra ‘-d’ / ‘--detach’ option as safeguard against landing you in
+this mode by accident. (Check ‘gim help navigation’ for more
+information on “detached HEAD” state.)
+
+The third variant is an undo for the last switch, i.e. you switch
+back to wherever it was you came from. (Like ‘cd -’ in the shell.)
+},
+    impl => q{Basically a wrapper around ‘git switch’.
 }};
 
 }
