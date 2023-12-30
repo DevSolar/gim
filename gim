@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.20;
+our $VERSION = v0.0.21;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1346,6 +1346,91 @@ specified files.
     impl => q{‘git diff [...]’, with prefixes ‘src:’ and ‘dst:’
 instead of ‘a/’ and ‘b/’, and honoring options.diff from the config
 file (defaulting to ‘-U3’).
+}};
+
+}
+
+###################################################################
+package fetch
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        $self->init_pager();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $quiet;
+        ::GetOptions(
+            'quiet|q' => \$quiet
+        );
+
+        my @tags;
+        my @command = ( 'git', 'for-each-ref', '--format="%(objecttype)%(refname:lstrip=2)%(objectname)"', 'refs/tags/*' );
+        my $exe = executor->new( \@command );
+
+        while ( $exe->readln() )
+        {
+            chomp;
+            my ( $type, $name, $hash ) = split( '\x{1f}' );
+
+            if ( $type eq 'commit' )
+            {
+                dbg::msg( "Saving lightweight tag \"$name $hash\"" );
+                push( @tags, "$name $hash" );
+            }
+        }
+
+        $exe->close_exe();
+
+        dbg::msg( 'Fetching from remote, pruning tags' );
+        @command = ( 'git', 'fetch', '--all', '--quiet', '--prune', '--prune-tags' );
+        executor::run( \@command );
+
+        foreach ( @tags )
+        {
+            dbg::msg( "Re-applying lightweight tag \"$_\"" );
+            @command = ( 'git', 'tag', $_ );
+            executor::run( \@command );
+        }
+
+        print( {$self->{ out }} util::localize( 'Local repository up to date.' ) );
+
+        if ( ! defined( $quiet ) )
+        {
+            $self->init_status();
+            $self->init_ahead_behind();
+            bless( $self, 'status' );
+            local @ARGV = ();
+            $self->run();
+        }
+
+        dbg::leave();
+        return;
+    }
+
+$_help{ fetch } =
+{
+    category => 'remote',
+    about => 'Fetch changes from upstream',
+    usage => q{gim fetch
+},
+    help => q{Fetch changes from upstream(s).
+
+No changes will be applied to your working copy yet.
+
+Annotated tags that no longer exist upstream get deleted locally.
+(See ‘gim help tag’.)
+},
+    impl => q{‘git fetch --all --quiet --prune --prune-tags’, with
+backing up and re-applying lightweight tags.
 }};
 
 }
