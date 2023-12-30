@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.19;
+our $VERSION = v0.0.20;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -906,6 +906,144 @@ Git does not store empty directories), but does not generate an
 error either.
 },
     impl => q{git add --intent-to-add --no-all -- [...]
+}};
+
+}
+
+###################################################################
+package bisect
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $command = util::subcommand( 'start', 'old' => 'good', 'new' => 'bad' );
+        $self->$command();
+        dbg::leave();
+        return;
+    }
+
+    sub start ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'bisect', 'start', '--term-new=new', '--term-old=old', '--first-parent', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    sub bad ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'bisect', 'new', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    sub good ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'bisect', 'old', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    sub skip ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'bisect', 'skip', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    sub end ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'bisect', 'reset' );
+
+        if ( @ARGV )
+        {
+            if ( $ARGV[0] eq 'current' || $ARGV[0] eq 'HEAD' )
+            {
+                push( @command, 'HEAD' );
+            }
+            elsif ( $ARGV[0] ne '-' )
+            {
+                util::throw(
+                    util::localize( 'Unknown option ‘[_1]’.', $ARGV[0] )
+                );
+            }
+        }
+        else
+        {
+            push( @command, 'bisect/new' );
+        }
+
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    # TODO:
+    # replay <logfile>
+    # log
+    # run <cmd>...
+    # help
+
+$_help{ bisect } =
+{
+    category => 'local',
+    about => 'Bisect commit history',
+    usage => q{gim bisect start [<old-rev> [<new-rev> ...]] -- [<filespec> ...]
+   gim bisect new [<rev>]
+   gim bisect old [<rev> ...]
+   gim bisect skip [<rev> | <rev-range>]
+   gim bisect end [- | current]
+},
+    help => q{Bisect commit history, looking for a specific change.
+
+The ‘bisect’ mode assists with locating the exact commit / code change
+that introduced a specific behavior, bug, or feature. You enter this
+mode with ‘gim bisect start’, and you leave it with ‘gim bisect end’.
+
+Once in ‘bisect’ mode, you can mark revisions as ‘old’ (i.e., showing
+the behavior prior to the change you are looking for), or ‘new’ (i.e.,
+showing the behavior after the change you are looking for). Without
+argument, ‘gim bisect old’ and ‘gim bisect new’ mark the current
+revision. You can also specify a commit hash or a tag to refer to
+a different revision.
+
+Once at least one ‘old’ and one ‘new’ revision has been marked, a
+revision somewhere in between those two is checked out, so you can
+test if that revision shows ‘old’ or ‘new’ behavior, and mark the
+revision as such. If your results are indeterminate, you can use
+‘gim bisect skip’ to select a different revision.
+
+Either way, a new revision will be checked out for you to test,
+bisecting the commit history until you have found the revision you
+are looking for.
+
+You can then end ‘bisect’ mode with ‘gim bisect end’, which will
+leave ‘bisect’ mode with the first revision marked ‘new’ checked
+out; or ‘gim bisect end -’, which will return to the revision
+you started the ‘bisect’ from; or ‘gim bisect end current’, which
+will leave ‘bisect’ mode with the current revision checked out.
+},
+    impl => q{Mostly just wrapping ‘git bisect’ and its subcommands.
+‘start’ uses ‘--first-parent’, and instead of ‘bisect reset’, we
+use ‘bisect end’.
 }};
 
 }
