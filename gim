@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.22;
+our $VERSION = v0.0.23;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1839,6 +1839,84 @@ Moves / renames a file, or moves multiple files to a target
 directory.
 },
     impl => q{Wrapper for ‘git mv --’.
+}};
+
+}
+
+###################################################################
+package rebase
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $command = util::subcommand( 'start' );
+        $self->$command();
+        dbg::leave();
+        return;
+    }
+
+    sub start ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'rebase', @ARGV );
+        executor::run( \@command, interactive => 1 );
+        dbg::leave();
+        return;
+    }
+
+    sub abort ( $self )
+    {
+        dbg::enter();
+        util::argv_check( -1, 0 );
+        my @command = ( 'git', 'rebase', '--abort' );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    sub continue ( $self )
+    {
+        dbg::enter();
+        util::argv_check( -1, 0 );
+        my @command = ( 'git', 'rebase', '--continue' );
+        executor::run( \@command, interactive => 1 );
+        dbg::leave();
+        return;
+    }
+
+$_help{ rebase } =
+{
+    category => q{local},
+    about => q{Rebase current branch},
+    usage => q{gim rebase [start] <upstream>
+   gim rebase abort
+   gim rebase continue
+},
+    help => q{Rebase current branch on upstream branch.
+
+With ‘gim rebase start’, the current branch will be rebased on the
+given upstream branch: The changes made in the current branch will
+be re-applied to the upstream branch HEAD, as if the branch were
+created from that HEAD.
+
+This is a kind of merge operation, and so merge conflicts can
+occur. In this case the rebase is interrupted so you can resolve
+the conflict.
+
+You can ‘continue’ the rebase, or ‘abort’ the whole operation.
+},
+    impl => q{Basically just a wrapper around ‘git rebase’ without
+having to use ‘--’ for the subcommands.
 }};
 
 }
