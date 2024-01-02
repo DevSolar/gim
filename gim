@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.25;
+our $VERSION = v0.0.26;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1757,6 +1757,44 @@ current one.
 ‘HEAD’, ‘refs/heads’, ‘refs/remotes’, and ‘refs/stash’ respectively.
 
 Output is reformatted for readability.
+}};
+
+}
+
+###################################################################
+package merge
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'merge', $ARGV[0] );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+$_help{ merge } =
+{
+    category => 'local',
+    about => 'Merge branches',
+    usage => q{gim merge ...
+},
+    help => q{Merge branches.
+
+t.b.d.
+},
+    impl => q{Currently really just a dummy forwarding to ‘git
+merge’ unchanged.
 }};
 
 }
