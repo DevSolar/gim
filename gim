@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.24;
+our $VERSION = v0.0.25;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1917,6 +1917,76 @@ You can ‘continue’ the rebase, or ‘abort’ the whole operation.
 },
     impl => q{Basically just a wrapper around ‘git rebase’ without
 having to use ‘--’ for the subcommands.
+}};
+
+}
+
+###################################################################
+package remote
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $command = util::subcommand( 'add' );
+        $self->$command();
+        dbg::leave();
+        return;
+    }
+
+    sub add ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'remote', 'add', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    sub remove ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'remote', 'remove', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    sub rename ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'remote', 'rename', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+$_help{ remote } =
+{
+    category => q{remote},
+    about => q{Handle remotes},
+    usage => q{gim remote <subcommand>
+},
+    help => q{Handle remotes.
+
+The following subcommands are available:
+
+ * add    -- Add a remote.
+
+ * remove -- Remove a remote.
+
+ * rename -- Rename a remote.
+},
+    impl => q{Currently just a wrapper around ‘git remote’.
 }};
 
 }
