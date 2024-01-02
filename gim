@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.23;
+our $VERSION = v0.0.24;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1917,6 +1917,47 @@ You can ‘continue’ the rebase, or ‘abort’ the whole operation.
 },
     impl => q{Basically just a wrapper around ‘git rebase’ without
 having to use ‘--’ for the subcommands.
+}};
+
+}
+
+###################################################################
+package resolve
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        util::filespec_check( 'TRACKED', @ARGV );
+        util::filespec_check( 'FILE', @ARGV );
+        my @command = ( 'git', 'mergetool', '--no-prompt', '--', @ARGV );
+        executor::run( \@command, throw_on_fail => 0 );
+        dbg::leave();
+        return;
+    }
+
+$_help{ resolve } =
+{
+    category => 'local',
+    about => 'Resolve merge conflicts',
+    usage => q{gim resolve [filespec...]
+},
+    help => q{Resolves merge conflicts.
+
+By default, will process each file with merge conflicts. By
+specifying filespecs, you can limit the process to those files
+/ directories.
+},
+    impl => q{A wrapper for ‘git mergetool --no-prompt -- [...].
 }};
 
 }
