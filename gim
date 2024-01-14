@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.26;
+our $VERSION = v0.0.27;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -834,6 +834,42 @@ package worker
             $self->{ err } = \*STDERR;
         }
 
+        dbg::leave();
+        return;
+    }
+
+    sub init_history ( $self, $count )
+    {
+        dbg::enter();
+
+        # Get an array of the hashes of commits from HEAD
+        my @history = ();
+        my @command = ( 'git', 'log', 'HEAD', '-n' . ( $count + 1 ), '--pretty=format:%H' );
+
+        dbg::msg( 'History:' );
+        my $exe = executor->new( \@command );
+
+        while ( $exe->readln() )
+        {
+            chomp;
+            dbg::msg( $_ );
+            push( @history, $_ );
+        }
+
+        $exe->close_exe();
+        push( @command, '--not', '--remotes' );
+        dbg::msg( 'Unpublished:' );
+        $exe = executor->new( \@command );
+
+        while ( $exe->readln() )
+        {
+            chomp;
+            dbg::msg( $_ );
+            $self->{ unpublished } = $_;
+        }
+
+        $exe->close_exe();
+        $self->{ history } = \@history;
         dbg::leave();
         return;
     }
@@ -2479,6 +2515,104 @@ The third variant is an undo for the last switch, i.e. you switch
 back to wherever it was you came from. (Like ‘cd -’ in the shell.)
 },
     impl => q{Basically a wrapper around ‘git switch’.
+}};
+
+}
+
+###################################################################
+package uncommit
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        my $force;
+        my $count;
+        ::GetOptions(
+            'force|f' => \$force,
+            'n=i' => \$count
+        );
+
+        if ( ! defined( $count ) )
+        {
+            $count = 1;
+        }
+
+        $self->init_history( $count );
+        my @history = @{$self->{ history }};
+
+        if ( defined( $force ) )
+        {
+            if ( scalar( @{$self->{ history }} ) <= $count )
+            {
+                util::throw(
+                    util::localize( 'Not enough commits to operate on.' )
+                );
+            }
+        }
+        else
+        {
+            my $available = 0;
+
+            if ( defined( $self->{ unpublished } ) )
+            {
+                foreach ( @history )
+                {
+                    ++$available;
+                    last if $self->{ unpublished } eq $_;
+                }
+            }
+
+            if ( $available < $count )
+            {
+                util::throw(
+                    util::localize( 'Not enough commits to operate on.' )
+                );
+            }
+        }
+
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'reset', '--mixed', $self->{ history }[-1] );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+$_help{ uncommit } =
+{
+    category => q{local},
+    about => q{Undo commits},
+    usage => q{gim uncommit [--force|-f] [-n=i]
+},
+    help => q{Undo commits.
+
+Allows to undo commits you already made. The changes made by those
+commits will then be present in your working directory. The commit
+message will be lost (but you may recover it via your shell's
+command history).
+
+If you undo more than one commit (via the ‘-n=i’ option with i > 1),
+the information what change was in which commit will be lost as
+well.
+
+For commits that have not been pushed to any remote yet, this is a
+trivial task.
+
+For commits that have already been pushed, an ‘uncommit’ would
+require a forced push, as it is rewriting published history. (Check
+‘gim help rewrite’ on more information on that subject.) As a
+safeguard against doing this accidentially, ‘gim uncommit’ requires
+the ‘--force’ / ‘-f’ option in this case.
+},
+    impl => q{‘git reset --mixed’ after determining the correct
+commit ID to reset to.
 }};
 
 }
