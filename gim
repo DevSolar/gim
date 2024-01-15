@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.27;
+our $VERSION = v0.0.28;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1626,6 +1626,189 @@ can be either a subcommand, or a general help topic (which are not
 linked to any specific subcommand).
 },
     impl => q{Custom.
+}};
+
+}
+
+###################################################################
+package info
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        $self->init_pager();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        ::GetOptions(
+            'verbose|v' => \$self->{ verbose }
+        );
+
+        my @command = ( 'git', 'remote' );
+        my ( $out, $err, $rc ) = executor::run( \@command );
+
+        my @remotes = split( "\n", $out );
+
+        if ( @ARGV )
+        {
+            foreach ( @ARGV )
+            {
+                my $remote = $_;
+
+                if ( ! grep { /^$remote$/ } @remotes )
+                {
+                    util::throw(
+                        util::localize( 'No such remote: ‘[_1]’.', $remote )
+                    );
+                }
+
+                $self->remote( $remote );
+            }
+        }
+        else
+        {
+            @command = ( 'git', 'config' );
+
+            foreach ( @remotes )
+            {
+                $command[2] = 'remote.' . $_ . '.url';
+                ( $out, $err, $rc ) = executor::run( \@command );
+                chomp( $out );
+                printf( {$self->{ out }}
+                    " %s  %s\n",
+                    fmt::remote( $_ ),
+                    fmt::url( $out )
+                );
+            }
+
+            say( {$self->{ out }} ' ' . ( '-' x ( $Text::Wrap::columns - 2 ) ) );
+
+            $self->overview();
+        }
+
+        dbg::leave();
+        return;
+    }
+
+    sub overview ( $self )
+    {
+        dbg::enter();
+        #git for-each-ref refs/heads --format="%(HEAD) %(refname:lstrip=2) %(upstream:lstrip=2) %(push:lstrip=2)"
+        my @command = ( 'git', 'for-each-ref', 'refs/heads', '--format=%(HEAD) %(refname:lstrip=2)%(upstream:lstrip=2)%(push:lstrip=2)' );
+        my $exe = executor->new( \@command );
+
+        while ( $exe->readln() )
+        {
+            chomp;
+            my ( $branch, $upstream, $push ) = split( '' );
+
+            if ( $push ne '' && $push eq $upstream )
+            {
+                $push = '';
+            }
+
+            print( {$self->{ out }} ' ' . fmt::branch( $branch ) );
+
+            if ( $upstream ne '' )
+            {
+                print( {$self->{ out }} '  ' . ( ( $push eq '' ) ? '<->' : ' < ' ) . '  ' . fmt::upstream( $upstream ) );
+
+                if ( $push ne '' )
+                {
+                    print( {$self->{ out }} ' > ' . fmt::push( $push ) );
+                }
+            }
+
+            print( {$self->{ out }} "\n" );
+        }
+
+        $exe->close_exe();
+        dbg::leave();
+        return;
+    }
+
+    sub remote ( $self, $remote )
+    {
+        dbg::enter();
+
+        # Remote and URL
+        my @command = ( 'git', 'config', "remote.$remote.url" );
+        my ( $out, $err, $rc ) = executor::run( \@command );
+        chomp $out;
+        printf( {$self->{ out }}
+            "  %s  %s\n",
+            fmt::remote( $remote ),
+            fmt::url( $out )
+        );
+
+        # Remote Branches
+        @command = ( 'git', 'branch', '--remotes', '--list', '--format=%(refname:lstrip=2)%(symref:lstrip=2)', $remote . '/*' );
+        my $exe = executor->new( \@command );
+
+        while ( $exe->readln() )
+        {
+            chomp;
+            my ( $ref, $symref ) = map { s/$remote\///r } split( "\x{1f}" );
+            print( {$self->{ out }} '    ' . fmt::ref( $ref ) );
+
+            if ( $symref )
+            {
+                print( {$self->{ out }} '  ->  ', fmt::symref( $symref ) );
+            }
+
+            print( {$self->{ out }} "\n" );
+
+            if ( $self->{ verbose } && ! defined( $symref ) )
+            {
+                my $log = git::log( '--max-count=1', $ref );
+                my ( $hash, $time_iso, $time_rel, $name, $msg ) = split( '', $exe->readln() );
+                $exe->close_exe();
+                printf( {$self->{ out }} '%s  %s  %s',
+                    fmt::time( $time_rel ),
+                    fmt::name( $name ),
+                    $msg
+                );
+            }
+        }
+
+        dbg::leave();
+        return;
+    }
+
+$_help{ info } =
+{
+    category => q{info},
+    about => q{High-level repository information},
+    usage => q{gim info [[--verbose|-v] <remote>]
+},
+    help => q{High-level repository information.
+
+Shows a summary of configured remotes and branches.
+
+If given the name of an existing remote, retrieves information on
+branches available on that remote. The ‘--verbose’ / ‘-v’ option
+lists the latest commit for each branch.
+},
+    impl => q{This is a compound command. Remotes are determined
+with ‘git remote’, their URLs with ‘git config remote.<remote>.url’.
+
+Tracking branches are determined with ‘git for-each-ref refs/heads’,
+using (and parsing) a custom format string including refname,
+upstream, and push for the branch.
+
+If called with the name of an existing remote, the branches of
+that remote are retrieved via ‘git branch --remotes --list’.
+
+The ‘--verbose’ option calls ‘git log --max-count=1’ on each branch.
+
+All git output is customized for readability.
 }};
 
 }
