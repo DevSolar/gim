@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.28;
+our $VERSION = v0.0.29;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -2698,6 +2698,235 @@ The third variant is an undo for the last switch, i.e. you switch
 back to wherever it was you came from. (Like ‘cd -’ in the shell.)
 },
     impl => q{Basically a wrapper around ‘git switch’.
+}};
+
+}
+
+###################################################################
+package tag
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        $self->init_pager();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $command = util::subcommand( 'add' );
+        $self->$command();
+        dbg::leave();
+        return;
+    }
+
+    sub add ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'tag' );
+        my $file;
+        my $msg;
+        my $light;
+        ::GetOptions(
+            'file|F=s'    => \$file,
+            'message|m=s' => \$msg,
+            'light|l'     => \$light
+        );
+        util::argv_check( 1, 2 );
+
+        if ( defined( $file ) && defined( $msg ) )
+        {
+            util::throw(
+                util::text( 'Conflicting options ‘[_1]’ and ‘[_2]’.', '--file', '--message' )
+            );
+        }
+
+        if ( defined( $light ) )
+        {
+            if ( defined( $file ) || defined( $msg ) )
+            {
+                util::throw(
+                    util::text( 'Conflicting options ‘[_1]’ and ‘[_2]’.', '--light', ( defined( $file ) ? '--file' : '--message' ) )
+                );
+            }
+        }
+        else
+        {
+            push( @command, '-a' );
+        }
+
+        if ( defined( $file ) )
+        {
+            util::check_filespecs( $E_ERROR, $file );
+            push( @command, '--file', $file );
+        }
+
+        if ( defined( $msg ) )
+        {
+            push( @command, '--message', $msg );
+        }
+
+        push( @command, '--', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    sub delete ( $self, @args ) # TODO: Delete remote lightweights as well
+    {
+        dbg::enter();
+        $self->init();
+        util::argv_check( 1, 1 );
+        my $type = util::check_tag( $args[0] );
+        my ( $upstream, $push ) = git::upstream( $self->{ current_branch } );
+        $push =~ s/\/.*//;
+
+        if ( $type eq "tag" )
+        {
+            print( util::text( 'Tag ‘[_1]’ is an annotated tag.', $args[0] ) .
+                   util::text( 'Delete on remote ‘[_1]’ as well?', $push ) .
+                   util::text( 'Warning: This operation cannot be undone.' ) );
+
+            if ( util::confirmation() )
+            {
+                util::execute( "git push $push :refs/tags/$args[0]", rc => -1 );
+            }
+        }
+
+        util::execute( "git tag -d -- $args[0]", rc => -1 );
+        dbg::leave();
+        return;
+    }
+
+    sub list ( $self )
+    {
+        dbg::enter();
+        my $all;
+        ::GetOptions(
+            'all|a' => \$all,
+        );
+
+        my @command = ( 'git', 'for-each-ref', '--sort=-taggerdate', '--format=%(objectname)%(*objectname:short=8)%(taggerdate:iso)%(taggerdate:relative)%(taggername)%(taggeremail)%(refname:lstrip=2)%(contents:subject)%(contents:body)' );
+
+        if ( @ARGV )
+        {
+            foreach ( @ARGV )
+            {
+                push( @command, 'refs/tags/' . $_ );
+            }
+        }
+        else
+        {
+            push( @command, 'refs/tags/*' );
+        }
+
+        my $exe = executor->new( \@command );
+
+        while ( $exe->readln() )
+        {
+            my ( $taghash, $hash, $time_iso, $time_rel, $name, $mail, $tag, $subject, $body ) = split( '' );
+
+            if ( $hash eq '' )
+            {
+                # Lightweight tags have no hash of their own
+                # so the object hash *is* already the commit
+                $hash = $taghash;
+                # Also, their contents:subject is that of the
+                # tagged commit (obviously).
+                $subject = "\b\b";
+                $body = '';
+            }
+
+            if ( defined( $all ) )
+            {
+                printf( {$self->{ out }} "%s  %s  %s  %s  (%s)\n", fmt::time( $time_iso ), fmt::hash( $hash ), fmt::name( $name ), $subject, fmt::tag( $tag ) );
+            }
+            else
+            {
+                printf( {$self->{ out }} "%s  %s  %s  (%s)\n", fmt::time( $time_rel ), fmt::name( $name ), $subject, fmt::tag( $tag ) );
+            }
+        }
+
+        $exe->close_exe();
+        dbg::leave();
+        return;
+    }
+
+$_help{ tag } =
+{
+    category => 'local',
+    about => 'Handle commit tags',
+    usage => q{gim tag add [--message | -m <msg>] <tag> [<revspec>]
+   gim tag add [--file | -F <filename>] <tag> [<revspec>]
+   gim tag add --light | -l <tag> [<revspec>]
+   gim tag delete <tag>
+   gim tag list [--all | -a] <pattern>
+},
+    help => q{Handle commit tags.
+
+A tag is an alias applied to an existing commit. It allows to
+refer to that specific commit by its symbolic tag name, so you
+do not have to refer to its hash value anymore.
+
+There are two different kinds of tags: Annotated, meaning these
+are given a message similar to a commit message; and lightweight,
+which are not given such a message. Within Gim we use lightweight
+tags for local use only and never push them to remotes, whereas
+annotated tags are always pushed.
+
+Annotated tags that got deleted on the remote will get deleted
+locally when you next ‘gim fetch’ from the remote. Lightweight
+(local) tags are not affected.
+
+Note that the described behavior is only true within Gim. The
+behavior of Git regarding tags is different.
+
+The following subcommands are available:
+
+ * add    -- Add a tag.
+
+Without options, an editor is opened for you to enter the tag
+message. With the ‘--file’ / ‘-F’ option, the contents of the
+file specified will be used as tag message. With the ‘--message’ /
+‘-m’ option, the passed string is used as the tag message.
+
+With the ‘--light’ / ‘-l’ option, no tag message is given, and
+a lightweight tag is created.
+
+For each of these commands, you need to specify the tag name. By
+default that tag name is applied to the HEAD commit. You may
+specify a different commit (through its hash value or an already
+existing other tag) to apply the tag to.
+
+ * delete -- Delete a tag.
+
+Deletes a tag locally. Annotated tags get deleted on the remote
+as well; this happens directly, and does not require a ‘git push’
+to take effect.
+
+ * list   -- List tags.
+
+Lists tags similar to ‘git log’. By default, shows a one-line
+format containing relative time, tagger information, tag summary,
+and tag name.
+
+With the ‘--all’ / ’-a’ option, the default one-line format is
+changed to show absolute timestamps instead of relative, and will
+list the abbreviated hash of the tagged commit as well.
+},
+    impl => q{A wrapper around ‘git tag’ with some massaging of
+the wording of the options to make the difference between annotated
+and lightweight tags clearer.
+
+Deleting an annotated tag adds the option to push the deletion to
+the remote (which does not happen with a normal push).
+
+Listing tags uses a custom output format.
 }};
 
 }
