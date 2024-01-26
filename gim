@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.30;
+our $VERSION = v0.0.31;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -2670,6 +2670,171 @@ The ‘show’ command adds ‘-p’.
 }
 
 ###################################################################
+package status
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_status();
+        $self->init_ahead_behind();
+        $self->init_pager();
+        dbg::leave();
+        return;
+    }
+
+    sub ahead ( $self )
+    {
+        dbg::enter();
+        my @specs = ( 'HEAD', '^' . $self->{ 'branch.upstream' } );
+        my $log = logger->new( \@specs );
+
+        while ( $log->readln_fmt() )
+        {
+            my ( $graph, $hash, $authorName, $authorTimeRel, $authorTimeIso, $commitName, $commitTimeRel, $commitTimeIso, $subject, $description ) = @{$_};
+            print( {$self->{ out }}
+                '   ' . fmt::time( $authorTimeRel ) .
+                '  ' . fmt::name( $authorName ) .
+                '  ' . $subject .
+                "\n" );
+        }
+
+        $log->close_exe();
+        dbg::leave();
+        return;
+    }
+
+    sub behind ( $self )
+    {
+        dbg::enter();
+        my @specs = ( '^HEAD', $self->{ 'branch.upstream' } );
+        my $log = logger->new( \@specs );
+
+        while ( $log->readln_fmt() )
+        {
+            my ( $graph, $hash, $authorName, $authorTimeRel, $authorTimeIso, $commitName, $commitTimeRel, $commitTimeIso, $subject, $description ) = @{$_};
+            print( {$self->{ out }}
+                '   ' . fmt::time( $authorTimeRel ) .
+                '  ' . fmt::name( $authorName ) .
+                '  ' . $subject .
+                "\n" );
+        }
+
+        $log->close_exe();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        print( {$self->{ out }} ' ' . util::localize( 'Current branch:' ) );
+
+        if ( $self->{ 'branch.head' } eq '(detached)' )
+        {
+            print( {$self->{ out }} '  ' . fmt::branch( '* <detached:' . substr( $self->{ 'branch.oid' }, 0, $cfg->val( 'options', 'hash_length' ) ) . '>' ) );
+        }
+        else
+        {
+            print( {$self->{ out }} '  ' . fmt::branch( '* ' . $self->{ 'branch.head' } ) );
+
+            my @command = ( 'git', 'for-each-ref', 'refs/heads/' . $self->{ 'branch.head' }, '--format=%(upstream:lstrip=2)%(push:lstrip=2)' );
+            my ( $out, $err, $rc ) = executor::run( \@command );
+            chomp( $out );
+            my ( $upstream, $push ) = split( '', $out );
+
+            if ( defined( $push ) && $push eq $upstream )
+            {
+                $push = '';
+            }
+
+            if ( defined( $upstream ) && $upstream ne '' )
+            {
+                print( {$self->{ out }} '  ' . ( ( $push eq '' ) ? '<->' : ' < ' ) . '  ' . fmt::upstream( $upstream ) );
+
+                if ( $push ne '' )
+                {
+                    print( {$self->{ out }} ' > ' . fmt::push( $push ) );
+                }
+            }
+
+            print( {$self->{ out }} "\n" );
+        }
+
+        if ( $self->{ 'branch.ahead' } > 0 )
+        {
+            print( {$self->{ out }} ' ' . util::localize( 'Ahead:' ) );
+            $self->ahead();
+        }
+
+        if ( $self->{ 'branch.behind' } > 0 )
+        {
+            print( {$self->{ out }} ' ' . util::localize( 'Behind:' ) );
+            $self->behind();
+        }
+
+        my @command = ( 'git', 'status', '--short', '--no-branch' );
+
+        if ( $self->{ 'out_paged' } == 1 )
+        {
+            splice( @command, 1, 0, '-c', 'color.status=always' );
+        }
+
+        my $exe = executor->new( \@command );
+
+        while ( $exe->readln() )
+        {
+            if ( $exe->{ 'linecount' } == 1 )
+            {
+                print( {$self->{ out }} ' ' . util::localize( 'Local:' ) );
+            }
+
+            print( {$self->{ out }} '   ' . $_ );
+        }
+
+        $exe->close_exe();
+
+        if ( defined( $self->{ stash } ) )
+        {
+            bless( $self, 'stash' );
+            local @ARGV = ( 'list' );
+            $self->run();
+        }
+
+        dbg::leave();
+        return;
+    }
+
+$_help{ status } =
+{
+    category => q{info},
+    about => q{Status of the working directory},
+    usage => q{gim status
+},
+    help => q{Status of the working directory.
+
+Shows a summary of:
+
+- which branch you are working on,
+
+- which remote branch(es) it pushes to / pulls from,
+
+- which commits are you ahead or behind of the remote branch [*],
+
+- what local modifications exist.
+
+[*]: This requires a ‘gim fetch’ to be up-to-date.
+},
+    impl => q{A compound command that gives all the information of
+‘git status --branch --ahead-behind --show-stash’ plus some more,
+in the terse format of ‘git status --short’ plus some improvements
+in presentation.
+}};
+
+}
+
+###################################################################
 package switch
 {
     use parent -norequire => 'worker';
@@ -3381,7 +3546,7 @@ if ( defined( $command ) )
 }
 else
 {
-    $command = util::subcommand( 'help' );
+    $command = util::subcommand( 'status' );
 }
 
 $command->run();
