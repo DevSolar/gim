@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.29;
+our $VERSION = v0.0.30;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -798,6 +798,50 @@ package worker
         dbg::enter();
         my @command = ( 'git', 'rev-parse', '--git-dir' );
         ( $self->{ git_dir }, my $err, my $rc ) = executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+    sub init_status ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'status', '--porcelain=2', '--branch', '--show-stash' );
+        my $exe = executor->new( \@command );
+        my @status = ();
+
+        while ( $exe->readln() )
+        {
+            if ( m/^# ([^ ]*) (.*)/ )
+            {
+                $self->{ $1 } = $2;
+            }
+            else
+            {
+                push( @status, $_ );
+            }
+        }
+
+        $exe->close_exe();
+        $self->{ 'status' } = \@status;
+        dbg::leave();
+        return;
+    }
+
+    sub init_ahead_behind ( $self )
+    {
+        dbg::enter();
+        $self->{ 'branch.ahead' } = -1;
+        $self->{ 'branch.behind' } = -1;
+
+        if ( defined( $self->{ 'branch.ab' } ) )
+        {
+            if ( $self->{ 'branch.ab' } =~ m/\+(\d*) -(\d*)/ )
+            {
+                $self->{ 'branch.ahead' } = $1;
+                $self->{ 'branch.behind' } = $2;
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -3025,6 +3069,86 @@ the ‘--force’ / ‘-f’ option in this case.
 },
     impl => q{‘git reset --mixed’ after determining the correct
 commit ID to reset to.
+}};
+
+}
+
+###################################################################
+package update
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_status();
+        $self->init_ahead_behind();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+
+        if ( $self->{ 'branch.head' } eq '(detached)' )
+        {
+            util::throw(
+                util::localize( 'Repository in “detached HEAD” state, cannot update.' )
+            );
+        }
+
+        if ( ! defined( $self->{ 'branch.upstream' } ) )
+        {
+            util::throw(
+                util::localize( 'No upstream defined.' )
+            );
+        }
+
+        if ( $self->{ 'branch.behind' } <= 0 )
+        {
+            print( {$self->{ out }}
+                util::localize( 'No unmerged changes.' )
+            );
+        }
+        else
+        {
+            if ( $self->{ 'branch.ahead' } > 0 )
+            {
+                my @command = ();
+
+                if ( scalar( @{$self->{ 'status' }} ) )
+                {
+                    @command = ( 'git', 'stash', 'push', '--include-untracked', '-m', 'gim update' );
+                    executor::run( \@command );
+                }
+
+                @command = ( 'git', 'rebase', '--quiet' );
+                executor::run( \@command );
+
+                if ( scalar( @{$self->{ 'status' }} ) )
+                {
+                    @command = ( 'git', 'stash', 'pop' );
+                    executor::run( \@command );
+                }
+            }
+        }
+
+        dbg::leave();
+        return;
+    }
+
+$_help{ update } =
+{
+    category => q{remote},
+    about => q{t.b.d.},
+    usage => q{gim update
+},
+    help => q{t.b.d.
+
+t.b.d.
+},
+    impl => q{t.b.d.
 }};
 
 }
