@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.32;
+our $VERSION = v0.0.33;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -2227,6 +2227,113 @@ output on the changes merged this way, and a ‘gim status’.
 }
 
 ###################################################################
+package push
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_status();
+
+        if ( $self->{ 'branch.head' } eq '(detached)' )
+        {
+            util::throw(
+                util::localize( 'Operation not possible in unnamed branch.' )
+            );
+        }
+
+        if ( $self->{ 'branch.oid' } eq '(initial)' )
+        {
+            util::throw(
+                util::localize( 'Operation not possible in initial state.' )
+            );
+        }
+
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'push', '--follow-tags', '--quiet' );
+        my $remote;
+        my $force;
+        ::GetOptions(
+            'to|t=s' => \$remote,
+            'force|f' => sub { push( @command, '--force-with-lease' ); }
+        );
+
+        my @helper_command = ( 'git', 'for-each-ref', '--format=%(push:lstrip=2)', 'refs/heads/' . $self->{ 'branch.head' } );
+        my ( $push, $err, $rc ) = executor::run( \@helper_command );
+        chomp $push;
+
+        if ( $push eq '' )
+        {
+            if ( ! defined( $remote ) )
+            {
+                util::throw(
+                    util::localize( 'No remote to push to.' )
+                );
+            }
+
+            @helper_command = ( 'git', 'branch', '--remotes', '--list', '--format=%(refname:lstrip=3)', $remote . '/*' );
+            ( my $out, $err, $rc ) = executor::run( \@helper_command );
+            my @remote_branches = split( "\n", $out );
+
+            if ( scalar( @remote_branches ) == 0 )
+            {
+                util::throw(
+                    util::localize( 'Unknown remote ‘[_1]’.', $remote )
+                );
+            }
+
+            if ( grep { /^$self->{ 'branch.head' }$/ } @remote_branches )
+            {
+                util::throw(
+                    util::localize( 'Branch ‘[_1]’ already exists on remote ‘[_2]’.', $self->{ 'branch.head' }, $remote )
+                );
+            }
+
+            push( @command, ( '--set-upstream', $remote, $self->{ 'branch.head' } ) );
+        }
+
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+$_help{ push } =
+{
+    category => q{remote},
+    about => q{Push local commits to remote},
+    usage => q{gim push [--force]
+   gim push [--to|-t] <remote>
+},
+    help => q{Push local commits to remote.
+
+The first variant pushes your current branch to the push remote
+configured for it.
+
+The second variant pushes to the given remote, using the same
+remote branch name as you used locally.
+
+If you need to use a different branch name remotely than you used
+locally, please use ‘git push’ with the appropriate options directly.
+},
+    impl => q{Does a ‘git push --follow-tags --quiet’, with some
+added sanity checks.
+
+For the ‘--to’ option, ‘--set-upstream’ is used (again with sanity
+checks added).
+
+‘--force’ is turned into ‘--force-with-lease’ for safety.
+}};
+
+}
+
+###################################################################
 package rebase
 {
     use parent -norequire => 'worker';
@@ -2511,7 +2618,9 @@ $_help{ rm } =
 Removes one or more files from version control. If one or more of
 the given <filespec> refers to a directory, the ‘--recurse’ / ‘-r’
 option is required to remove all the directory contents from version
-control.
+control. If one or more of the given <filespec> refers to a file with
+local modifications, the ‘--force’ / ‘-f’ option is required to
+override the protection.
 },
     impl => q{A wrapper for ‘git rm’.
 }};
