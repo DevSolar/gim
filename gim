@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.31;
+our $VERSION = v0.0.32;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -2140,6 +2140,88 @@ Moves / renames a file, or moves multiple files to a target
 directory.
 },
     impl => q{Wrapper for ‘git mv --’.
+}};
+
+}
+
+###################################################################
+package pull
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_status();
+        $self->init_pager();
+        $self->{ 'local_modifications' } = ( scalar( @{$self->{ 'status' }} ) > 0 );
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my @orig_argv = @ARGV;
+
+        if ( $self->{ 'local_modifications' } )
+        {
+            bless( $self, 'stash' );
+            local @ARGV = ( 'push', '-m', 'gim pull' );
+            $self->run();
+        }
+
+        bless( $self, 'fetch' );
+        local @ARGV = ( '--quiet', @orig_argv );
+        $self->run();
+
+        $self->init_status();
+        $self->init_ahead_behind();
+
+        if ( $self->{ 'branch.behind' } > 0 )
+        {
+            print( {$self->{ out }} ' ' . util::localize( 'Merging:' ) );
+            bless( $self, 'status' );
+            $self->behind();
+        }
+
+        bless( $self, 'rebase' );
+        @ARGV = ( 'start', '--quiet', @orig_argv );
+        $self->run();
+
+        if ( $self->{ 'local_modifications' } )
+        {
+            bless( $self, 'stash' );
+            local @ARGV = ( 'pop' );
+            $self->run();
+        }
+
+        $self->init_status();
+        $self->init_ahead_behind();
+        bless( $self, 'status' );
+        local @ARGV = ();
+        $self->run();
+
+        dbg::leave();
+        return;
+    }
+
+$_help{ pull } =
+{
+    category => q{remote},
+    about => q{Download and merge remote changes},
+    usage => q{gim pull ...
+},
+    help => q{Download and merge remote changes.
+
+All local modifications are being backed up. Then ‘git fetch’ is
+run, fetching all remote changes. If you are commits ahead of your
+remote, your commits are being rebased. Then any local modifications
+backed up in the first step are being restored.
+},
+    impl => q{Does an implicit ‘git stash push’, a ‘git pull
+--quiet’, an implicit ‘git rebase‘, and a ‘git stash pop’, including
+output on the changes merged this way, and a ‘gim status’.
 }};
 
 }
