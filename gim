@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.33;
+our $VERSION = v0.0.34;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -2575,6 +2575,93 @@ option, untracked files will be deleted as well.
 [...]’.
 
 The ‘--clean’ option adds ‘git clean --force -d --quiet [...]’.
+}};
+
+}
+
+###################################################################
+package rewrite
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_status();
+        util::argv_check( 1, 1 );
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $from;
+        my @command = ( 'git', 'for-each-ref', 'refs/heads/*', '--format=%(refname:lstrip=2)' );
+        my ( $out, $err, $rc ) = executor::run( \@command );
+        my @heads = split( "\n", $out );
+        foreach ( @heads )
+        {
+            dbg::msg( $_ );
+        }
+
+        if ( $self->{ 'branch.head' } eq '(detached)' )
+        {
+            if ( ! grep { /^$ARGV[0]$/ } @heads )
+            {
+                util::throw(
+                    util::localize( 'Rewrite from detached HEAD requires branch argument.' )
+                );
+            }
+
+            $from = $self->{ 'branch.oid' };
+            @command = ( 'git', 'switch', $ARGV[0] );
+            executor::run( \@command );
+        }
+        else
+        {
+            if ( grep { /^$ARGV[0]$/ } @heads )
+            {
+                util::throw(
+                    util::localize( 'Rewrite from HEAD requires detached commit argument.' )
+                );
+            }
+
+            $from = $ARGV[0];
+        }
+
+        $ENV{ 'GIT_SEQUENCE_EDITOR' } = 'sed -i -e "1 s/pick/drop/"';
+
+        @command = ( 'git', 'rebase', '-i', $from );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+$_help{ rewrite } =
+{
+    category => q{local},
+    about => q{Rewrite commit history},
+    usage => q{gim rewrite <branch>
+   gim rewrite <commit>
+},
+    help => q{Rewrite commit history.
+
+After a historic commit has been amended, it is usually necessary to
+propagate that amendment from the amended commit to the branch head.
+
+‘gim rewrite’ can be used in two ways:
+
+The first way is used with the amended commit currently checked out,
+stating the branch head.
+
+The second way is used with the branch head currently checked out,
+stating the amended commit.
+},
+    impl => q{Depending on the status of the work directory, gathers
+the correct options for a ‘git rebase -i’, with the first commit in
+the list getting turned from a ‘pick’ to a ‘drop’ as necessary for
+the operation.
 }};
 
 }
