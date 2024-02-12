@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.34;
+our $VERSION = v0.0.35;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1269,6 +1269,50 @@ $_help{ clone } =
 Creates a clone of the specified repository.
 },
     impl => q{‘git clone --quiet --no-local -- [...]’
+}};
+
+}
+
+###################################################################
+package amend
+{
+    use parent -norequire => 'worker';
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $file;
+        my $msg;
+        my @orig_argv = @ARGV;
+        ::GetOptions(
+            'file|F=s' => \$file,
+            'message|m=s' => \$msg
+        );
+
+        if ( ! ( defined( $file ) || defined( $msg ) ) )
+        {
+            $ENV{ 'GIT_EDITOR' } = 'true';
+        }
+
+        local @ARGV = ( '--amend', @orig_argv );
+        bless( $self, 'commit' );
+        $self->run();
+        dbg::leave();
+        return;
+    }
+
+$_help{ amend } =
+{
+    category => q{local},
+    about => q{Amend an existing commit},
+    usage => q{gim amend ...
+},
+    help => q{Amend an existing commit.
+
+This is a shortcut for ‘git commit --amend ...’.
+},
+    impl => q{Adds ‘--amend’ to the parameter list and defers the
+result to ‘gim commit’.
 }};
 
 }
