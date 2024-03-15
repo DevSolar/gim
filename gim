@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.35;
+our $VERSION = v0.0.36;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -2142,6 +2142,80 @@ Creates a new branch, including switching to it.
 },
     impl => q{Currently really just a dummy forwarding to ‘git
 branch -- [...]’, followed by ‘git switch -- [...]’.
+}};
+
+}
+
+###################################################################
+package mkpatch
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        util::argv_check( -1, 1 );
+        $self->init_status();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'tar', 'czf', $ARGV[0] // 'patch.tgz' );
+
+        foreach ( @{$self->{ 'status' }} )
+        {
+            my @fields = split( ' ' );
+            my $path;
+
+            if ( $fields[0] eq "1" )
+            {
+                $path = $fields[8];
+            }
+            elsif ( $fields[0] eq "2" )
+            {
+                ( $path ) = ( $fields[9] =~ m/^([^\t]*)/ );
+            }
+            elsif ( $fields[0] eq "u" )
+            {
+                $path = $fields[10];
+            }
+            elsif ( $fields[0] eq "?" )
+            {
+                $path = $fields[1];
+            }
+            else
+            {
+                util::throw(
+                    util::localize( 'Unexpected output by git:' ) .
+                    $_
+                );
+            }
+
+            push( @command, $path );
+        }
+
+        executor::run( \@command, throw_on_fail => 0 );
+        dbg::leave();
+        return;
+    }
+
+$_help{ mkpatch } =
+{
+    category => q{local},
+    about => q{Make a tarball of local modifications},
+    usage => q{gim mkpatch [<archive>]
+},
+    help => q{Make a tarball of local modifications.
+
+Creates a tarball with all the files that ‘gim status’ would show
+as locally modified. The tarball will be named ‘patch.tgz’ if no
+specific archive name is given.
+},
+    impl => q{Parses the output of ‘git status’, identifying the
+file names and calling ‘tar czf’ on them.
 }};
 
 }
