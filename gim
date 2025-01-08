@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.36;
+our $VERSION = v0.0.37;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -360,6 +360,7 @@ package util
         if ( $caller eq 'main' )
         {
             $subcommand = $subcommand->new();
+            dbg::enter();
         }
 
         dbg::leave();
@@ -2883,6 +2884,80 @@ repository.
 },
     impl => q{A wrapper for ‘git branch --delete --force -- [...]’
 or ‘git push [...] --delete [...]’ respectively.
+}};
+
+}
+
+###################################################################
+package setup
+{
+    use parent -norequire => 'worker';
+
+    sub set ( $self, $setting, %options )
+    {
+        dbg::enter();
+        my %opts = ( value => undef, prompt => undef, %options );
+
+        my @command = ( 'git', 'config', $setting );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( defined( $opts{ prompt } ) )
+            {
+                print( $opts{ prompt } );
+                $opts{ value } = readline( STDIN );
+
+                if ( ! defined( $opts{ value } ) )
+                {
+                    util::throw( util::localize( 'Input aborted.' ) );
+                }
+
+                chomp( $opts{ value } );
+            }
+
+            @command = ( 'git', 'config', '--global', $setting, $opts{ value } );
+            executor::run( \@command );
+        }
+
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+
+        $self->set( 'user.name', prompt => util::localize( 'Please enter [_1]:', 'user.name' ) );
+        $self->set( 'user.email', prompt => util::localize( 'Please enter [_1]:', 'user.email' ) );
+        $self->set( 'core.editor', prompt => util::localize( 'Please enter [_1]:', 'core.editor (Default: vi)' ) );
+        $self->set( 'merge.tool', prompt => util::localize( 'Please enter [_1]:', 'merge.tool (Default: vimdiff)' ) );
+
+        $self->set( 'init.defaultBranch', 'main' );
+        $self->set( 'pull.rebase', 'true' );
+        $self->set( 'core.autocrlf', 'input' );
+
+        dbg::leave();
+        return;
+    }
+
+$_help{ setup } =
+{
+    category => q{local},
+    about => q{Set up basic configuration},
+    usage => q{gim setup
+},
+    help => q{Set up basic configuration.
+
+Git relies on some basic configuration to work.
+
+With ‘gim setup’, you can get this done in one go.
+},
+    impl => q{A wrapper for a couple of ‘git config’ calls.
+
+Prompting the user for ‘user.name’, ‘user.email’, and ‘core.editor’.
+Setting ’init.defaultBranch main’, ‘pull.rebase true’, and
+‘core.autocrlf input’.
 }};
 
 }
