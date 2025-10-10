@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.37;
+our $VERSION = v0.0.38;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -3607,6 +3607,44 @@ Deleting an annotated tag adds the option to push the deletion to
 the remote (which does not happen with a normal push).
 
 Listing tags uses a custom output format.
+}};
+
+}
+
+###################################################################
+package unstage
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'restore', '--staged', '--', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+$_help{ unstage } =
+{
+    category => q{local},
+    about => q{Revert staging of files},
+    usage => q{gim unstage <filespec> [<filespec> ...]
+},
+    help => q{Revert staging of files.
+
+Reverts files that have been staged to unstaged state. If a file
+has been added, it is un-added by this.
+},
+    impl => q{‘git restore --staged -- [...]’
 }};
 
 }
