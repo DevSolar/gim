@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.39;
+our $VERSION = v0.0.40;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -3748,7 +3748,7 @@ commit ID to reset to.
 }
 
 ###################################################################
-package update
+package pick
 {
     use parent -norequire => 'worker';
 
@@ -3757,6 +3757,7 @@ package update
         dbg::enter();
         $self->init_status();
         $self->init_ahead_behind();
+        util::filespec_check( 'TRACKED', @ARGV );
         dbg::leave();
         return;
     }
@@ -3765,10 +3766,22 @@ package update
     {
         dbg::enter();
 
+        my $force;
+        ::GetOptions(
+            'force|f' =>\$force
+        );
+
+        if ( ! $force )
+        {
+            util::throw(
+                util::localize( 'The ‘pick’ command overwrites local modifications. Use ‘-f’/‘--force’ to confirm.' )
+            );
+        }
+
         if ( $self->{ 'branch.head' } eq '(detached)' )
         {
             util::throw(
-                util::localize( 'Repository in “detached HEAD” state, cannot update.' )
+                util::localize( 'Repository in “detached HEAD” state, cannot pick.' )
             );
         }
 
@@ -3787,42 +3800,30 @@ package update
         }
         else
         {
-            if ( $self->{ 'branch.ahead' } > 0 )
-            {
-                my @command = ();
+            my @command = ();
 
-                if ( scalar( @{$self->{ 'status' }} ) )
-                {
-                    @command = ( 'git', 'stash', 'push', '--include-untracked', '-m', 'gim update' );
-                    executor::run( \@command );
-                }
-
-                @command = ( 'git', 'rebase', '--quiet' );
-                executor::run( \@command );
-
-                if ( scalar( @{$self->{ 'status' }} ) )
-                {
-                    @command = ( 'git', 'stash', 'pop' );
-                    executor::run( \@command );
-                }
-            }
+            @command = ( 'git', 'restore', '--source=@{u}', '--', @ARGV );
+            executor::run( \@command );
         }
 
         dbg::leave();
         return;
     }
 
-$_help{ update } =
+$_help{ pick } =
 {
-    category => q{remote},
-    about => q{t.b.d.},
-    usage => q{gim update
+    category => q{local},
+    about => q{Update to latest remote version},
+    usage => q{gim pick -f|--force [<filespec> ...]
 },
-    help => q{t.b.d.
+    help => q{Update to latest remote version
 
-t.b.d.
+Commonly used after ‘fetch’, updates the working directory (or just the
+specified file(s) to reflect the latest version on the remote. Local
+modifications are overwritten, which is why the -f/--force option is
+mandatory.
 },
-    impl => q{t.b.d.
+    impl => q{git restore --source=@{u} -- [...]
 }};
 
 }

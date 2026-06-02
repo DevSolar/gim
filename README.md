@@ -4,7 +4,9 @@ Gim is a “porcelain” for Git.
 
 ## Status
 
-Pre-alpha.
+Alpha. I decided to re-do this project in C++, and thus provide this
+pre-release version as-is and without promises. I use it daily, but
+it still has its quirks.
 
 ## Architecture
 
@@ -24,3 +26,6 @@ available, and installed in ~/.config/gim/perl5.
 Put the ‘gim’ script somewhere into your PATH, then call ‘gim help
 topics’ to see an overview of Gim's concepts. ‘gim help’ will give
 you a list of the available commands.
+
+If you use Bash Completion (as you should), get ‘gim-completion.bash’
+as well and source it in your environment as appropriate.
