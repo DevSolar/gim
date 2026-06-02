@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.40;
+our $VERSION = v0.0.41;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -3165,7 +3165,8 @@ package status
         {
             my ( $graph, $hash, $authorName, $authorTimeRel, $authorTimeIso, $commitName, $commitTimeRel, $commitTimeIso, $subject, $description ) = @{$_};
             print( {$self->{ out }}
-                '   ' . fmt::time( $authorTimeRel ) .
+                '   ' . fmt::hash( $hash ) .
+                '  ' . fmt::time( $authorTimeRel ) .
                 '  ' . fmt::name( $authorName ) .
                 '  ' . $subject .
                 "\n" );
@@ -3186,7 +3187,8 @@ package status
         {
             my ( $graph, $hash, $authorName, $authorTimeRel, $authorTimeIso, $commitName, $commitTimeRel, $commitTimeIso, $subject, $description ) = @{$_};
             print( {$self->{ out }}
-                '   ' . fmt::time( $authorTimeRel ) .
+                '   ' . fmt::hash( $hash ) .
+                '  ' . fmt::time( $authorTimeRel ) .
                 '  ' . fmt::name( $authorName ) .
                 '  ' . $subject .
                 "\n" );
@@ -4011,7 +4013,7 @@ $_topic{ tags } =
 {
     order => 7,
     about => q{How Gim makes tags useful},
-    help => q{THe default behavior of Git when it comes to tags is
+    help => q{The default behavior of Git when it comes to tags is
 somewhat unintuitive, and not really useful. Gim has the proper
 options in place to make them useful:
 
