@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.41;
+our $VERSION = v0.0.42;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -3155,6 +3155,43 @@ package status
         return;
     }
 
+    sub current ( $self )
+    {
+        dbg::enter();
+        if ( $self->{ 'branch.head' } eq '(detached)' )
+        {
+            print( {$self->{ out }} '  ' . fmt::branch( '* <detached:' . substr( $self->{ 'branch.oid' }, 0, $cfg->val( 'options', 'hash_length' ) ) . '>' ) );
+        }
+        else
+        {
+            print( {$self->{ out }} '  ' . fmt::branch( '* ' . $self->{ 'branch.head' } ) );
+
+            my @command = ( 'git', 'for-each-ref', 'refs/heads/' . $self->{ 'branch.head' }, '--format=%(upstream:lstrip=2)%(push:lstrip=2)' );
+            my ( $out, $err, $rc ) = executor::run( \@command );
+            chomp( $out );
+            my ( $upstream, $push ) = split( '', $out );
+
+            if ( defined( $push ) && $push eq $upstream )
+            {
+                $push = '';
+            }
+
+            if ( defined( $upstream ) && $upstream ne '' )
+            {
+                print( {$self->{ out }} '  ' . ( ( $push eq '' ) ? '<->' : ' < ' ) . '  ' . fmt::upstream( $upstream ) );
+
+                if ( $push ne '' )
+                {
+                    print( {$self->{ out }} ' > ' . fmt::push( $push ) );
+                }
+            }
+
+            print( {$self->{ out }} "\n" );
+        }
+        dbg::leave();
+        return;
+    }
+
     sub ahead ( $self )
     {
         dbg::enter();
@@ -3202,38 +3239,10 @@ package status
     sub run ( $self )
     {
         dbg::enter();
+
         print( {$self->{ out }} ' ' . util::localize( 'Current branch:' ) );
+        $self->current();
 
-        if ( $self->{ 'branch.head' } eq '(detached)' )
-        {
-            print( {$self->{ out }} '  ' . fmt::branch( '* <detached:' . substr( $self->{ 'branch.oid' }, 0, $cfg->val( 'options', 'hash_length' ) ) . '>' ) );
-        }
-        else
-        {
-            print( {$self->{ out }} '  ' . fmt::branch( '* ' . $self->{ 'branch.head' } ) );
-
-            my @command = ( 'git', 'for-each-ref', 'refs/heads/' . $self->{ 'branch.head' }, '--format=%(upstream:lstrip=2)%(push:lstrip=2)' );
-            my ( $out, $err, $rc ) = executor::run( \@command );
-            chomp( $out );
-            my ( $upstream, $push ) = split( '', $out );
-
-            if ( defined( $push ) && $push eq $upstream )
-            {
-                $push = '';
-            }
-
-            if ( defined( $upstream ) && $upstream ne '' )
-            {
-                print( {$self->{ out }} '  ' . ( ( $push eq '' ) ? '<->' : ' < ' ) . '  ' . fmt::upstream( $upstream ) );
-
-                if ( $push ne '' )
-                {
-                    print( {$self->{ out }} ' > ' . fmt::push( $push ) );
-                }
-            }
-
-            print( {$self->{ out }} "\n" );
-        }
 
         if ( $self->{ 'branch.ahead' } > 0 )
         {
@@ -3315,7 +3324,8 @@ package switch
     sub init ( $self )
     {
         dbg::enter();
-        $self->init_git_dir();
+        $self->init_status();
+        $self->init_pager();
         dbg::leave();
         return;
     }
@@ -3345,7 +3355,13 @@ package switch
             }
         }
 
-        if ( $rc != 0 )
+        if ( $rc == 0 )
+        {
+            bless( $self, 'status' );
+            print( {$self->{ out }} ' ' . util::localize( 'Current branch:' ) );
+            $self->current();
+        }
+        else
         {
             util::throw(
                 util::localize( 'Failure while executing ‘[_1]’.', 'gim switch' ) .
