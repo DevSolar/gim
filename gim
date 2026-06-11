@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.43;
+our $VERSION = v0.0.44;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1439,6 +1439,10 @@ package diff
     {
         dbg::enter();
         my $opts = $cfg->val( 'options', 'diff' );
+        my $prev;
+        ::GetOptions(
+            'prev|p:1' => sub { unshift( @ARGV, "HEAD~$prev" ); }
+        );
         my @command = ( 'git', 'diff', '--color=always', '--src-prefix=src: ', '--dst-prefix=dst: ', $cfg->val( 'options', 'diff' ), @ARGV );
         my $exe = executor->new( \@command );
 
@@ -1457,6 +1461,7 @@ $_help{ diff } =
     category => q{info},
     about => q{Show differences},
     usage => q{gim diff [<revspec>] [<filespec> [<filespec> ...]]
+   gim diff [--prev|-p <n>] [<filespec> [<filespec> ...]]
 },
     help => q{Shows differences between commits, commits and the
 working copy, etc.
@@ -1464,7 +1469,9 @@ working copy, etc.
 By default shows the difference of the working directory to the
 latest commit. By specifying a single revspec, shows the difference
 of the working directory to that revspec instead. By specifying two
-revspecs, shows the difference between the two revspecs.
+revspecs, shows the difference between the two revspecs. Using the
+‘--prev’ / ‘-p’ option is equivalent to ‘HEAD~<n>’, i.e. a short for
+“diff against <n> commits previous”.
 
 By specifying filespecs, limits the diffs shown to those in the
 specified files.
