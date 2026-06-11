@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.42;
+our $VERSION = v0.0.43;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -605,10 +605,11 @@ package logger
 {
     use parent -norequire => 'executor';
 
-    sub new ( $class, $logspecs )
+    sub new ( $class, $logspecs, %opts )
     {
         dbg::enter();
-        my @command = ( 'git', 'log', '--color=always', '--decorate-refs=HEAD', '--decorate-refs=refs/heads', '--decorate-refs=refs/remotes', '--decorate-refs=refs/stash', '--decorate-refs=refs/tags', '--date-order', '--abbrev=' . $cfg->val( 'options', 'hash_length' ), '--pretty=format:%h%aN%ar%ai%cN%cr%ci%s%C(auto)%d', @{$logspecs} );
+        my @ordering = $opts{ walk_reflogs } ? ( '--walk-reflogs' ) : ( '--date-order' );
+        my @command = ( 'git', 'log', '--color=always', '--decorate-refs=HEAD', '--decorate-refs=refs/heads', '--decorate-refs=refs/remotes', '--decorate-refs=refs/stash', '--decorate-refs=refs/tags', @ordering, '--abbrev=' . $cfg->val( 'options', 'hash_length' ), '--pretty=format:%h%aN%ar%ai%cN%cr%ci%s%C(auto)%d', @{$logspecs} );
         my $self = $class->SUPER::new( \@command );
         dbg::leave();
         return $self;
@@ -3032,31 +3033,23 @@ package stash
             return;
         }
 
-        my @command = ( 'git', 'stash', 'list', @ARGV );
-        my $exe = executor->new( \@command );
+        my $stash_fmt = '--pretty=format:%gd%h%aN%ar%ai%cN%cr%ci%s%C(auto)%d';
+        my $log = logger->new( [ $stash_fmt, 'refs/stash' ], walk_reflogs => 1 );
 
-        while ( $exe->readln() )
+        while ( $log->readln_fmt() )
         {
-            my ( $id, $branch, $commit, $msg ) = ( m/stash\@\{(.*)\}: WIP on ([^:]*): ([a-f0-9]*) (.*)/ );
-
-            if ( defined( $commit ) )
-            {
-                $msg = fmt::hash( $commit ) . ' ' . $msg;
-            }
-            else
-            {
-                ( $id, $branch, $msg ) = ( m/stash\@\{(.*)\}: On ([^:]*): (.*)/ );
-            }
-
+            my ( $ref, $hash, $authorName, $authorTimeRel, $authorTimeIso,
+                 $commitName, $commitTimeRel, $commitTimeIso, $subject, $description ) = @{$_};
             printf( {$self->{ out }}
-                "    %s: %s: %s\n",
-                fmt::stash( $id ),
-                fmt::branch( $branch ),
-                $msg
+                "    %s  %s  %s  %s\n",
+                fmt::stash( $ref =~ s/stash\@\{(.*)\}/$1/r ),
+                fmt::time( $authorTimeIso ),
+                fmt::name( $authorName ),
+                $subject
             );
         }
 
-        $exe->close_exe();
+        $log->close_exe();
         dbg::leave();
         return;
     }
