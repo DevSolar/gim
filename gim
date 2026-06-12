@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.44;
+our $VERSION = v0.0.45;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -3324,8 +3324,7 @@ package switch
     sub init ( $self )
     {
         dbg::enter();
-        $self->init_status();
-        $self->init_pager();
+        $self->init_git_dir();
         dbg::leave();
         return;
     }
@@ -3357,6 +3356,8 @@ package switch
 
         if ( $rc == 0 )
         {
+            $self->init_status();
+            $self->init_pager();
             bless( $self, 'status' );
             print( {$self->{ out }} ' ' . util::localize( 'Current branch:' ) );
             $self->current();
