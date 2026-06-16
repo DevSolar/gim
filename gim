@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.47;
+our $VERSION = v0.0.48;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -2867,6 +2867,20 @@ package rmbranch
 
         if ( defined( $remote ) )
         {
+            my @remotes_cmd = ( 'git', 'remote' );
+            my ( $out, $err, $rc ) = executor::run( \@remotes_cmd, throw_on_fail => 0 );
+            my @known_remotes = split( /\n/, $out );
+
+            if ( ! grep { $_ eq $remote } @known_remotes )
+            {
+                util::throw(
+                    util::localize(
+                        '‘[_1]’ is not a known remote. Did you forget to specify one?',
+                        $remote
+                    )
+                );
+            }
+
             @command = ( 'git', 'push', $remote, '--delete', $ARGV[0] );
         }
         else
