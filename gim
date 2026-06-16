@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.45;
+our $VERSION = v0.0.46;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -337,6 +337,10 @@ package util
                     $subcommand = $candidate;
                     shift( @ARGV );
                 }
+                else
+                {
+                    util::throw( util::localize( 'Unknown command.' ) );
+                }
             }
             else
             {
@@ -345,14 +349,12 @@ package util
                     $subcommand = $candidate;
                     shift( @ARGV );
                 }
-            }
-
-            if ( ! defined( $subcommand ) )
-            {
-                util::throw( util::localize( 'Unknown command.' ) );
+                # else: $ARGV[0] is not a subcommand (flag or positional arg);
+                # fall through to use the default subcommand.
             }
         }
-        elsif ( ! defined( $subcommand ) )
+
+        if ( ! defined( $subcommand ) )
         {
             $subcommand = $default;
         }
