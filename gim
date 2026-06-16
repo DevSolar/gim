@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.46;
+our $VERSION = v0.0.47;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1996,7 +1996,7 @@ package log
             "long|l" => sub { push( @specs, '--format=full' ); $predefined = 1; },
             "verbose|v" => sub { push( @specs, '--format=fuller' ); $predefined = 1; },
             "reference|r" => sub { push( @specs, '--format=reference' ); $predefined = 1; },
-            "graph|g" => sub { push( @specs, '--graph' ); $print_graph = 1; }
+            "graph|g" => sub { push( @specs, '--graph', '--all' ); $print_graph = 1; }
         );
 
         push( @specs, @ARGV );
