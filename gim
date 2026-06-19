@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.48;
+our $VERSION = v0.0.49;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -2325,6 +2325,7 @@ package pull
             $self->run();
         }
 
+        undef $self->{ stash };
         $self->init_status();
         $self->init_ahead_behind();
         bless( $self, 'status' );
