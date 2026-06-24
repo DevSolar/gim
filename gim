@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.50;
+our $VERSION = v0.0.51;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -305,6 +305,7 @@ package util
             {
                 util::throw(
                     util::localize( 'Failure while executing ‘[_1]’.', ${$command}[0] . ' ' . ${$command}[1] ) .
+                    "\n" .
                     $err .
                     "\n"
                 );
@@ -868,7 +869,7 @@ package worker
         }
         else
         {
-            $ENV{ 'ANSI_COLORS_DISABLED' } = 1;
+            $ENV{ ANSI_COLORS_DISABLED } = 1;
             $self->{ out } = \*STDOUT;
         }
 
@@ -1526,7 +1527,7 @@ package fetch
         $exe->close_exe();
 
         dbg::msg( 'Fetching from remote, pruning tags' );
-        @command = ( 'git', 'fetch', '--all', '--quiet', '--prune', '--prune-tags' );
+        @command = ( 'git', 'fetch', '--all', '--prune', '--prune-tags' );
         executor::run( \@command );
 
         foreach ( @tags )
