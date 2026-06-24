@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.51;
+our $VERSION = v0.0.52;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -991,6 +991,52 @@ Git does not store empty directories), but does not generate an
 error either.
 },
     impl => q{git add --intent-to-add --no-all -- [...]
+}};
+
+}
+
+###################################################################
+package base
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'merge-base', @ARGV );
+        my ( $out, $err, $rc ) = executor::run( \@command );
+
+        if ( util::rc_check( $rc, 'git merge-base', $err ) == 0 )
+        {
+            print( util::localize( 'Common base commit: [_1]', $out ) );
+        }
+
+        dbg::leave();
+        return;
+    }
+
+$_help{ base } =
+{
+    category => 'info',
+    about => 'Show base commit',
+    usage => q{gim base <branch1> <branch2>
+},
+    help => q{Show base commit.
+
+Shows the commit that both branches base on, i.e. the point where
+the branch happened.
+},
+    impl => q{‘git merge-base’, renamed because the functionality
+does not necessarily have to do with merging, and because Perl
+really does not like hyphens in package names.
 }};
 
 }
@@ -2620,6 +2666,7 @@ package resolve
     sub init ( $self )
     {
         dbg::enter();
+        util::argv_check( 1, -1 );
         $self->init_git_dir();
         dbg::leave();
         return;
@@ -2661,6 +2708,7 @@ package revert
     sub init ( $self )
     {
         dbg::enter();
+        util::argv_check( 1, -1 );
         $self->init_git_dir();
         dbg::leave();
         return;
