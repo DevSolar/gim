@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.52;
+our $VERSION = v0.0.53;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -153,6 +153,8 @@ package util
         $defaults->newval( 'colorscheme', 'stash',    'yellow' );
         $defaults->newval( 'colorscheme', 'symref',   'green' );
         $defaults->newval( 'colorscheme', 'tag',      'yellow' );
+        $defaults->newval( 'colorscheme', 'track',    'red' );
+        $defaults->newval( 'colorscheme', 'track_current', 'green' );
         $defaults->newval( 'colorscheme', 'time',     'blue' );
         $defaults->newval( 'colorscheme', 'upstream', 'yellow' );
         $defaults->newval( 'colorscheme', 'url',      'magenta' );
@@ -387,7 +389,7 @@ package fmt
 {
     sub branch ( $str )
     {
-        return ::colored( sprintf( '%-20s', $str ), substr( $str, 0, 1 ) eq '*' ? 'current' : 'branch' );
+        return ::colored( sprintf( '%-32s', $str ), substr( $str, 0, 1 ) eq '*' ? 'current' : 'branch' );
     }
 
     sub description ( $str )
@@ -473,6 +475,16 @@ package fmt
         return ::colored( $str, 'tag' );
     }
 
+    sub track ( $str )
+    {
+        return ::colored( $str, 'track' );
+    }
+
+    sub track_current ()
+    {
+        return ::colored( '[current]', 'track_current' );
+    }
+
     sub time ( $str )
     {
         return ::colored( sprintf( '%15s', $str ), 'time' );
@@ -480,7 +492,7 @@ package fmt
 
     sub upstream ( $str )
     {
-        return ::colored( $str, 'upstream' );
+        return ::colored( sprintf( '%-40s', $str ), 'upstream' );
     }
 
     sub url ( $str )
@@ -1847,13 +1859,13 @@ package info
     {
         dbg::enter();
         #git for-each-ref refs/heads --format="%(HEAD) %(refname:lstrip=2) %(upstream:lstrip=2) %(push:lstrip=2)"
-        my @command = ( 'git', 'for-each-ref', 'refs/heads', '--format=%(HEAD) %(refname:lstrip=2)%(upstream:lstrip=2)%(push:lstrip=2)' );
+        my @command = ( 'git', 'for-each-ref', 'refs/heads', '--format=%(HEAD) %(refname:short)%(upstream:short)%(push:short)%(push:track)' );
         my $exe = executor->new( \@command );
 
         while ( $exe->readln() )
         {
             chomp;
-            my ( $branch, $upstream, $push ) = split( '' );
+            my ( $branch, $upstream, $push, $track ) = split( '' );
 
             if ( $push ne '' && $push eq $upstream )
             {
@@ -1870,6 +1882,17 @@ package info
                 {
                     print( {$self->{ out }} ' > ' . fmt::push( $push ) );
                 }
+
+                if ( $track eq '' )
+                {
+                    $track = fmt::track_current();
+                }
+                else
+                {
+                    $track = fmt::track( $track );
+                }
+
+                print( {$self->{ out }} $track );
             }
 
             print( {$self->{ out }} "\n" );
