@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.54;
+our $VERSION = v0.0.55;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -48,7 +48,7 @@ BEGIN
     {
         # Pull package from GitHub to ~/.config/gim.
         make_path( PACKAGE_DIR . 'Capture' );
-        system( 'curl https://raw.githubusercontent.com/dagolden/Capture-Tiny/master/lib/Capture/Tiny.pm -s > ' . PACKAGE_DIR . 'Capture/Tiny.pm' );
+        system( 'curl -L -f -s https://raw.githubusercontent.com/dagolden/Capture-Tiny/master/lib/Capture/Tiny.pm > ' . PACKAGE_DIR . 'Capture/Tiny.pm' );
         use lib PACKAGE_DIR;
         require Capture::Tiny;
         Capture::Tiny->import( qw( :all ) );
@@ -65,7 +65,7 @@ BEGIN
     if ( ! $rc )
     {
         make_path( PACKAGE_DIR . 'Config' );
-        system( 'curl https://raw.githubusercontent.com/shlomif/perl-Config-IniFiles/master/config-inifiles/lib/Config/IniFiles.pm -s > ' . PACKAGE_DIR . 'Config/IniFiles.pm' );
+        system( 'curl -L -f -s https://raw.githubusercontent.com/shlomif/perl-Config-IniFiles/master/config-inifiles/lib/Config/IniFiles.pm > ' . PACKAGE_DIR . 'Config/IniFiles.pm' );
         use lib PACKAGE_DIR;
         require Config::IniFiles;
         Config::IniFiles->import();
@@ -138,33 +138,34 @@ package util
         my $defaults = Config::IniFiles->new();
 
         $defaults->AddSection( 'colorscheme' );
-        $defaults->newval( 'colorscheme', 'branch',   'green' );
-        $defaults->newval( 'colorscheme', 'current',  'cyan' );
-        $defaults->newval( 'colorscheme', 'error',    'red' );
-        $defaults->newval( 'colorscheme', 'hash',     'yellow' );
-        $defaults->newval( 'colorscheme', 'header',   'bold' );
-        $defaults->newval( 'colorscheme', 'line',     'magenta' );
-        $defaults->newval( 'colorscheme', 'local',    'green' );
-        $defaults->newval( 'colorscheme', 'name',     'cyan' );
-        $defaults->newval( 'colorscheme', 'ok',       'green' );
-        $defaults->newval( 'colorscheme', 'push',     'blue' );
-        $defaults->newval( 'colorscheme', 'ref',      'cyan' );
-        $defaults->newval( 'colorscheme', 'remote',   'red' );
-        $defaults->newval( 'colorscheme', 'stash',    'yellow' );
-        $defaults->newval( 'colorscheme', 'symref',   'green' );
-        $defaults->newval( 'colorscheme', 'tag',      'yellow' );
-        $defaults->newval( 'colorscheme', 'track',    'red' );
-        $defaults->newval( 'colorscheme', 'track_current', 'green' );
-        $defaults->newval( 'colorscheme', 'time',     'blue' );
-        $defaults->newval( 'colorscheme', 'upstream', 'yellow' );
-        $defaults->newval( 'colorscheme', 'url',      'magenta' );
-        $defaults->newval( 'colorscheme', 'warn',     'yellow' );
+        $defaults->newval( 'colorscheme', 'branch',             'green' );
+        $defaults->newval( 'colorscheme', 'current',            'cyan' );
+        $defaults->newval( 'colorscheme', 'error',              'red' );
+        $defaults->newval( 'colorscheme', 'hash',               'yellow' );
+        $defaults->newval( 'colorscheme', 'header',             'bold' );
+        $defaults->newval( 'colorscheme', 'line',               'magenta' );
+        $defaults->newval( 'colorscheme', 'local',              'green' );
+        $defaults->newval( 'colorscheme', 'name',               'cyan' );
+        $defaults->newval( 'colorscheme', 'ok',                 'green' );
+        $defaults->newval( 'colorscheme', 'push',               'blue' );
+        $defaults->newval( 'colorscheme', 'ref',                'cyan' );
+        $defaults->newval( 'colorscheme', 'remote',             'red' );
+        $defaults->newval( 'colorscheme', 'stash',              'yellow' );
+        $defaults->newval( 'colorscheme', 'symref',             'green' );
+        $defaults->newval( 'colorscheme', 'tag',                'yellow' );
+        $defaults->newval( 'colorscheme', 'track_current',      'green' );
+        $defaults->newval( 'colorscheme', 'track_ahead_behind', 'yellow' );
+        $defaults->newval( 'colorscheme', 'track_gone',         'red' );
+        $defaults->newval( 'colorscheme', 'time',               'blue' );
+        $defaults->newval( 'colorscheme', 'upstream',           'yellow' );
+        $defaults->newval( 'colorscheme', 'url',                'magenta' );
+        $defaults->newval( 'colorscheme', 'warn',               'yellow' );
 
         $defaults->AddSection( 'options' );
-        $defaults->newval( 'options', 'impl_info', '0' );
+        $defaults->newval( 'options', 'impl_info',   '0' );
         $defaults->newval( 'options', 'hash_length', '8' );
         $defaults->newval( 'options', 'graph_width', '6' );
-        $defaults->newval( 'options', 'diff', '-U3' );
+        $defaults->newval( 'options', 'diff',        '-U3' );
 
         dbg::leave();
         return $defaults;
@@ -477,7 +478,18 @@ package fmt
 
     sub track ( $str )
     {
-        return ::colored( $str, 'track' );
+        if ( $str eq '' )
+        {
+            return ::colored( '[up-to-date]', 'track_current' );
+        }
+        elsif ( $str eq '[gone]' )
+        {
+            return ::colored( $str, 'track_gone' );
+        }
+        else
+        {
+            return ::colored( $str, 'track_ahead_behind' );
+        }
     }
 
     sub track_current ()
@@ -1882,16 +1894,7 @@ package info
                     print( {$self->{ out }} ' > ' . fmt::push( $push ) );
                 }
 
-                if ( $track eq '' )
-                {
-                    $track = fmt::track_current();
-                }
-                else
-                {
-                    $track = fmt::track( $track );
-                }
-
-                print( {$self->{ out }} $track );
+                print( {$self->{ out }} '  ' . fmt::track( $track ) );
             }
 
             print( {$self->{ out }} "\n" );

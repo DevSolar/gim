@@ -32,7 +32,7 @@ BEGIN
     {
         # Pull package from GitHub to ~/.config/gim.
         make_path( PACKAGE_DIR . 'Carp/Assert' );
-        system( 'curl https://raw.githubusercontent.com/petdance/carp-assert-more/refs/heads/dev/More.pm -s > ' . PACKAGE_DIR . 'Carp/Assert/More.pm' );
+        system( 'curl -L -f -s https://raw.githubusercontent.com/petdance/carp-assert-more/refs/heads/dev/More.pm > ' . PACKAGE_DIR . 'Carp/Assert/More.pm' );
         use lib PACKAGE_DIR;
         require Carp::Assert::More;
         Carp::Assert::More->import();
@@ -128,9 +128,7 @@ say( 'Running tests (check gim.log).' );
 
 mkdir( TESTDIR );
 write_to_file( TESTDIR . '/foo', '' );
-write_to_file( TESTDIR . '/eecho', '/usr/bin/echo $* >&2' );
-@command = ( 'chmod', '+x', TESTDIR . '/eecho' );
-executor::run( \@command );
+write_to_file( TESTDIR . '/eecho', 'my $e = (@ARGV && $ARGV[0] eq "-e") ? shift(@ARGV) : ""; my $s = join(" ", @ARGV); if ($e) { $s =~ s/\\\\n/\\n/g; } print STDERR $s, "\\n";' );
 
 ##############################
 dbg::msg( '=== throw() ===' );
@@ -221,7 +219,7 @@ dbg::msg( '=== executor ===' );
 @command = ( 'nosuchcommand', 'nosucharg' );
 eval { $exe = executor->new( \@command ); 1; }
     or do { assert_like( $@, qr/.*Error:\n.*Failure while executing ‘nosuchcommand nosucharg’/ ); };
-@command = ( '/usr/bin/echo', '-e', '1\n2\n3\n4' );
+@command = ( 'echo', '-e', '1\n2\n3\n4' );
 $exe = executor->new( \@command );
 $rc = 1;
 while ( $exe->readln() )
@@ -234,19 +232,19 @@ $exe->close_exe();
 assert_is( $exe->{ linecount }, 4 );
 assert_is( $exe->{ rc }, 0 );
 assert_is( $exe->{ errors }, '' );
-@command = ( TESTDIR . '/eecho', '-e', '1\n2\n3\n4' );
+@command = ( $^X, TESTDIR . '/eecho', '-e', '1\n2\n3\n4' );
 $exe = executor->new( \@command );
 while ( $exe->readln() ) {}
 $exe->close_exe();
 assert_is( $exe->{ linecount }, 0 );
 assert_is( $exe->{ rc }, 0 );
 assert_is( $exe->{ errors }, "1\n2\n3\n4\n" );
-@command = ( '/usr/bin/echo', '-e', '1\n2\n3\n4' );
+@command = ( 'echo', '-e', '1\n2\n3\n4' );
 ( $out, $err, $rc ) = executor::run( \@command );
 assert_is( $out, "1\n2\n3\n4\n" );
 assert_is( $err, '' );
 assert_is( $rc, 0 );
-@command = ( TESTDIR . '/eecho', '-e', '1\n2\n3\n4' );
+@command = ( $^X, TESTDIR . '/eecho', '-e', '1\n2\n3\n4' );
 ( $out, $err, $rc ) = executor::run( \@command );
 assert_is( $out, '' );
 assert_is( $err, "1\n2\n3\n4\n" );
@@ -291,8 +289,8 @@ assert_is( $config_test->val( 'options', 'empty' ), undef );
 dbg::msg( '=== fmt ===' );
 ##########################
 
-assert_is( fmt::branch( 'foo' ), ::colored( 'foo                 ', 'green' ) );
-assert_is( fmt::branch( '* foo' ), ::colored( '* foo               ', 'cyan' ) );
+assert_is( fmt::branch( 'foo' ), ::colored( 'foo' . ( ' ' x 29 ), 'green' ) );
+assert_is( fmt::branch( '* foo' ), ::colored( '* foo' . ( ' ' x 27 ), 'cyan' ) );
 assert_is( fmt::description( 'foo' ), 'foo' );
 assert_is( fmt::error( 'foo' ), ::colored( "Error:\n", 'red' ) . ' foo' );
 assert_is( fmt::hash( 'foo' ), ::colored( 'foo', 'yellow' ) );
@@ -309,7 +307,7 @@ assert_is( fmt::stash( 'foo' ), ::colored( 'foo', 'yellow' ) );
 assert_is( fmt::symref( 'foo' ), ::colored( 'foo', 'green' ) );
 assert_is( fmt::tag( 'foo' ), ::colored( 'foo', 'yellow' ) );
 assert_is( fmt::time( 'foo' ), ::colored( '            foo', 'blue' ) );
-assert_is( fmt::upstream( 'foo' ), ::colored( 'foo', 'yellow' ) );
+assert_is( fmt::upstream( 'foo' ), ::colored( 'foo' . ( ' ' x 37 ), 'yellow' ) );
 assert_is( fmt::url( 'foo' ), ::colored( 'foo', 'magenta' ) );
 assert_is( fmt::warning( 'foo' ), ::colored( "Warning:\n", 'yellow' ) . ' foo' );
 
