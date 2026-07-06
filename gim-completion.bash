@@ -4,7 +4,7 @@ _gim() {
     local cur prev words cword
     _get_comp_words_by_ref -n : cur prev words cword
 
-    local subcommands="add amend bisect blame chmod clone commit diff fetch help info init log merge mkbranch mkpatch mv pull push rebase remote resolve revert rewrite rm rmbranch setup stash status switch tag unstage uncommit update"
+    local subcommands="add amend base bisect blame chmod clone commit diff fetch help info init log merge mkbranch mkpatch mv pull push purge rebase remote resolve revert rewrite rm rmbranch setup stash status switch tag unstage uncommit update"
 
     if [ $cword -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )

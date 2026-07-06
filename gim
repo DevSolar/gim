@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.53;
+our $VERSION = v0.0.54;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1858,7 +1858,6 @@ package info
     sub overview ( $self )
     {
         dbg::enter();
-        #git for-each-ref refs/heads --format="%(HEAD) %(refname:lstrip=2) %(upstream:lstrip=2) %(push:lstrip=2)"
         my @command = ( 'git', 'for-each-ref', 'refs/heads', '--format=%(HEAD) %(refname:short)%(upstream:short)%(push:short)%(push:track)' );
         my $exe = executor->new( \@command );
 
@@ -2981,6 +2980,101 @@ repository.
 },
     impl => q{A wrapper for ‘git branch --delete --force -- [...]’
 or ‘git push [...] --delete [...]’ respectively.
+}};
+
+}
+
+###################################################################
+package purge
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $sep = "\x{1f}";
+        my @command = ( 'git', 'for-each-ref', 'refs/heads',
+            "--format=%(HEAD) %(refname:short)${sep}%(upstream:short)${sep}%(push:short)${sep}%(push:track)" );
+        my $exe = executor->new( \@command );
+        my @gone = ();
+        my $current_gone;
+
+        while ( $exe->readln() )
+        {
+            chomp;
+            my ( $branch, $upstream, $push, $track ) = split( $sep );
+
+            next if $track !~ /\[gone\]/;
+
+            if ( substr( $branch, 0, 1 ) eq '*' )
+            {
+                $current_gone = substr( $branch, 2 );
+            }
+            else
+            {
+                push( @gone, substr( $branch, 2 ) );
+            }
+        }
+
+        $exe->close_exe();
+
+        if ( defined( $current_gone ) )
+        {
+            warn( fmt::error(
+                util::localize( "Cannot delete current branch \x{2018}[_1]\x{2019}: upstream is gone. Switch to another branch first.", $current_gone )
+            ) );
+        }
+
+        if ( ! @gone )
+        {
+            if ( ! defined( $current_gone ) )
+            {
+                print( util::localize( 'No branches with gone upstream found.' ) );
+            }
+
+            dbg::leave();
+            return;
+        }
+
+        foreach my $branch ( @gone )
+        {
+            @command = ( 'git', 'branch', '--delete', '--force', '--', $branch );
+            executor::run( \@command, interactive => 1 );
+        }
+
+        dbg::leave();
+        return;
+    }
+
+$_help{ purge } =
+{
+    category => q{local},
+    about => q{Delete dead branches},
+    usage => q{gim purge
+},
+    help => q{Delete dead branches.
+
+If the tracked remote branch is gone (e.g. due to a completed pull
+request), usually it ought to be removed locally too.
+
+‘gim purge’ does exactly that: Remove all branches for which the
+remote tracked branch is gone (‘[gone]’ in ‘gim info’).
+
+If the current branch has a gone upstream, a warning is shown
+and it is skipped; switch to another branch first, then re-run
+‘gim purge’.
+},
+    impl => q{Identifies branches to delete with 'git for-each-ref
+refs/heads'. Branches showing '[gone]' tracking status are removed
+with 'git branch --delete --force'.
 }};
 
 }
