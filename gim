@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.55;
+our $VERSION = v0.0.56;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -48,8 +48,12 @@ BEGIN
     {
         # Pull package from GitHub to ~/.config/gim.
         make_path( PACKAGE_DIR . 'Capture' );
-        system( 'curl -L -f -s https://raw.githubusercontent.com/dagolden/Capture-Tiny/master/lib/Capture/Tiny.pm > ' . PACKAGE_DIR . 'Capture/Tiny.pm' );
-        use lib PACKAGE_DIR;
+        system( 'curl -L -f -s ' .
+                # Version v0.50
+                'https://raw.githubusercontent.com/dagolden/Capture-Tiny/2e1a5a6a71a69b1be837683f3e216c144bec8a6c/lib/Capture/Tiny.pm ' .
+                PACKAGE_DIR .
+                'Capture/Tiny.pm' );
+        use if ! $rc, lib => PACKAGE_DIR;
         require Capture::Tiny;
         Capture::Tiny->import( qw( :all ) );
         1;
@@ -65,8 +69,12 @@ BEGIN
     if ( ! $rc )
     {
         make_path( PACKAGE_DIR . 'Config' );
-        system( 'curl -L -f -s https://raw.githubusercontent.com/shlomif/perl-Config-IniFiles/master/config-inifiles/lib/Config/IniFiles.pm > ' . PACKAGE_DIR . 'Config/IniFiles.pm' );
-        use lib PACKAGE_DIR;
+        system( 'curl -L -f -s ' .
+                # Version 3.001000
+                'https://raw.githubusercontent.com/shlomif/perl-Config-IniFiles/7040f46c00fade6ed81af18589c0de9b8d2f667a/config-inifiles/lib/Config/IniFiles.pm ' .
+                PACKAGE_DIR .
+                'Config/IniFiles.pm' );
+        use if ! $rc, lib => PACKAGE_DIR;
         require Config::IniFiles;
         Config::IniFiles->import();
         1;
@@ -907,6 +915,16 @@ package worker
             $self->{ err } = \*STDERR;
         }
 
+        dbg::leave();
+        return;
+    }
+
+    sub init_tracking( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git',  'rev-parse', '--abbrev-rev', '@{u}' );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+        $self->{ tracking } = $rc;
         dbg::leave();
         return;
     }
@@ -2355,6 +2373,13 @@ package pull
         dbg::enter();
         $self->init_status();
         $self->init_pager();
+        $self->init_tracking();
+
+        if ( $self->{ tracking } )
+        {
+            util::throw( util::localize( 'Branch ‘[_1]’ is not “tracking”, i.e. has no upstream configured.', $self->{ 'branch.head' } ) );
+        }
+
         $self->{ 'local_modifications' } = ( scalar( @{$self->{ 'status' }} ) > 0 );
         dbg::leave();
         return;
@@ -2381,20 +2406,27 @@ package pull
 
         if ( $self->{ 'branch.behind' } > 0 )
         {
-            print( {$self->{ out }} ' ' . util::localize( 'Merging:' ) );
+            print( {$self->{ out }} ' ' . util::localize( 'Incoming commits:' ) );
             bless( $self, 'status' );
             $self->behind();
         }
 
+        print( {$self->{ out }} ' ' . util::localize( 'Merging...' ) );
         bless( $self, 'rebase' );
         @ARGV = ( 'start', '--quiet', @orig_argv );
         $self->run();
+        print( {$self->{ out}} ' ' . util::localize( 'Done.' ) );
 
         if ( $self->{ 'local_modifications' } )
         {
             bless( $self, 'stash' );
             local @ARGV = ( 'pop' );
-            $self->run();
+            my $rc = $self->run();
+
+            if ( $rc )
+            {
+                print( {$self->{ out }} ' ' . util::localize( 'Re-applying your local changes failed due to collisions.\nThey are preserved on top of the stash.' ) );
+            }
         }
 
         undef $self->{ stash };
@@ -2679,6 +2711,46 @@ The following subcommands are available:
  * rename -- Rename a remote.
 },
     impl => q{Currently just a wrapper around ‘git remote’.
+}};
+
+}
+
+###################################################################
+package reset
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        util::argv_check( 1, -1 );
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'git', 'reset', '--mixed', @ARGV );
+        executor::run( \@command, throw_on_fail => 1 );
+        dbg::leave();
+        return;
+    }
+
+$_help{ reset } =
+{
+    category => 'local',
+    about => 'Reset HEAD to given commit',
+    usage => q{gim reset <commit>
+},
+    help => q{Reset HEAD to given commit.
+
+A kind of ‘undo’ for e.g. ‘switch --detach’ or ‘uncommit’, this
+command allows setting HEAD to an arbitrary commit. Handle with
+care. Preferably done with a clean working directory.
+},
+    impl => q{A wrapper for ‘git reset --mixed <commit>’.
 }};
 
 }
@@ -3183,9 +3255,9 @@ package stash
     {
         dbg::enter();
         my @command = ( 'git', 'stash', 'apply', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command );
         dbg::leave();
-        return;
+        return $rc;
     }
 
     sub branch ( $self )
