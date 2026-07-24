@@ -4,7 +4,7 @@ _gim() {
     local cur prev words cword
     _get_comp_words_by_ref -n : cur prev words cword
 
-    local subcommands="add amend base bisect blame chmod clone commit diff fetch help info init log merge mkbranch mkpatch mv pull push purge rebase remote resolve revert rewrite rm rmbranch setup stash status switch tag unstage uncommit update"
+    local subcommands="add amend base bisect blame chmod clean clone commit diff fetch help info init log merge mkbranch mkpatch mv pick pull push purge rebase remote reset resolve revert rewrite rm rmbranch setup stash status switch tag unstage uncommit update"
 
     if [ $cword -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
@@ -47,6 +47,12 @@ _gim() {
             ;;
         clone)
             _filedir
+            ;;
+        pick)
+            case "$cur" in
+                -*) COMPREPLY=( $(compgen -W "--force -f" -- "$cur") ) ;;
+                *) _filedir ;;
+            esac
             ;;
         commit)
             case "$cur" in
@@ -125,6 +131,9 @@ _gim() {
                         ;;
                 esac
             fi
+            ;;
+        reset)
+            COMPREPLY=( $(compgen -W "$(git rev-parse --symbolic --branches --tags --remotes 2>/dev/null)" -- "$cur") )
             ;;
         revert)
             case "$cur" in
