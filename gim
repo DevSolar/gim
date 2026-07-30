@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.59;
+our $VERSION = v0.0.60;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1604,6 +1604,49 @@ which parts of the file(s) he wants to commit.
 },
     impl => q{‘git commit [...]’, with ‘--all’ assumed if no files
 are specified.
+}};
+
+}
+
+###################################################################
+package contains
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_git_dir();
+        $self->init_pager();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my @command = ( ( 'git', 'branch', '-a', '--contains' ), @ARGV );
+        my $exe = executor->new( \@command );
+
+        while ( $exe->readln() )
+        {
+            print( {$self->{ out }} $_ );
+        }
+
+        $exe->close_exe();
+        dbg::leave();
+        return;
+    }
+
+$_help{ diff } =
+{
+    category => q{info},
+    about => q{Show which branches contain commit},
+    usage => q{gim contains <refspec>
+},
+    help => q{Shows which branches contain the given commit.
+},
+    impl => q{‘git branch -a --contains <refspec>’
 }};
 
 }
@@ -3900,7 +3943,7 @@ package tag
             }
         }
 
-        util::execute( "git tag -d -- $args[0]", rc => -1 );
+        util::execute( "git tag -d -- $args[0]", rc => -1, interactive => 1 );
         dbg::leave();
         return;
     }

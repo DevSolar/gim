@@ -19,7 +19,7 @@ _gim() {
     cur="${COMP_WORDS[$COMP_CWORD]}"
     prev="${COMP_WORDS[$COMP_CWORD-1]}"
 
-    local subcommands="add amend base bisect blame chmod clean clone commit diff fetch help info init listrepos log merge mkbranch mkpatch mv pick pull push purge rebase remote reset resolve revert rewrite rm rmbranch setup stash status switch tag unstage uncommit update"
+    local subcommands="add amend base bisect blame chmod clean clone commit contains diff fetch help info init listrepos log merge mkbranch mkpatch mv pick pull push purge rebase remote reset resolve revert rewrite rm rmbranch setup stash status switch tag unstage uncommit update"
 
     if [ $COMP_CWORD -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
