@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.58;
+our $VERSION = v0.0.59;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -1426,6 +1426,13 @@ package clone
 {
     use parent -norequire => 'worker';
 
+    sub init ( $self )
+    {
+        dbg::enter();
+        util::argv_check( 2, -1 );
+        dbg::leave();
+    }
+
     sub run ( $self )
     {
         dbg::enter();
@@ -1439,13 +1446,62 @@ $_help{ clone } =
 {
     category => q{local},
     about => q{Clone a repository},
-    usage => q{gim clone <URL|filespec>
+    usage => q{gim clone <URL|filespec> [...]
 },
     help => q{Clone a repository.
 
 Creates a clone of the specified repository.
 },
     impl => q{‘git clone --quiet --no-local -- [...]’
+}};
+
+}
+
+###################################################################
+package clonehub
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        util::argv_check( 1, -1 );
+        dbg::leave();
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my $repo = shift( @ARGV );
+        my $dir;
+
+        my @command = ( 'gh', 'repo', 'clone', $repo );
+
+        if ( @ARGV && $ARGV[ 0 ] !~ m{^-} )
+        {
+            $dir = shift( @ARGV );
+            splice( @command, 4, 0, $dir );
+        }
+
+        push( @command, '--', '--quiet', '--no-local', @ARGV );
+        executor::run( \@command );
+        dbg::leave();
+        return;
+    }
+
+$_help{ clone } =
+{
+    category => q{local},
+    about => q{Clone a repository (GitHub)},
+    usage => q{gim clonehub <URL|filespec> [target directory] [options...]
+},
+    help => q{Clone a repository.
+
+Creates a clone of the specified repository. Uses GitHub syntax, i.e. you only need
+to specify <organization/repo>, <user/repo>, or (if it is one of your repositories)
+just <repo>.
+},
+    impl => q{‘gh repo clone <URL|filespec> [directory] -- --quiet --no-local [...]’
 }};
 
 }
