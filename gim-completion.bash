@@ -1,34 +1,49 @@
 # bash completion for gim
+# Works without bash-completion package (no _filedir / _get_comp_words_by_ref).
+
+# Complete files and directories; appends to COMPREPLY so callers may
+# pre-populate it with other candidates (e.g. branch names in 'diff').
+_gim_files() {
+    COMPREPLY+=( $(compgen -f -- "$1") )
+    compopt -o filenames 2>/dev/null
+}
+
+# Complete directories only.
+_gim_dirs() {
+    COMPREPLY+=( $(compgen -d -- "$1") )
+    compopt -o filenames 2>/dev/null
+}
 
 _gim() {
-    local cur prev words cword
-    _get_comp_words_by_ref -n : cur prev words cword
+    local cur prev
+    cur="${COMP_WORDS[$COMP_CWORD]}"
+    prev="${COMP_WORDS[$COMP_CWORD-1]}"
 
     local subcommands="add amend base bisect blame chmod clean clone commit diff fetch help info init log merge mkbranch mkpatch mv pick pull push purge rebase remote reset resolve revert rewrite rm rmbranch setup stash status switch tag unstage uncommit update"
 
-    if [ $cword -eq 1 ]; then
+    if [ $COMP_CWORD -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
         return 0
     fi
 
-    local subcommand="${words[1]}"
+    local subcommand="${COMP_WORDS[1]}"
 
     case "$subcommand" in
         add|blame|resolve|unstage)
-            _filedir
+            _gim_files "$cur"
             ;;
         amend)
             case "$cur" in
                 -*) COMPREPLY=( $(compgen -W "--file -F --message -m" -- "$cur") ) ;;
-                *) _filedir ;;
+                *) _gim_files "$cur" ;;
             esac
             ;;
         bisect)
             local sub="start new old skip end"
-            if [ $cword -eq 2 ]; then
+            if [ $COMP_CWORD -eq 2 ]; then
                 COMPREPLY=( $(compgen -W "$sub" -- "$cur") )
             else
-                case "${words[2]}" in
+                case "${COMP_WORDS[2]}" in
                     start|new|old|skip)
                         COMPREPLY=( $(compgen -W "$(git rev-parse --symbolic --branches --tags --remotes 2>/dev/null)" -- "$cur") )
                         ;;
@@ -39,34 +54,30 @@ _gim() {
             fi
             ;;
         chmod)
-            if [ $cword -eq 2 ]; then
+            if [ $COMP_CWORD -eq 2 ]; then
                 COMPREPLY=( $(compgen -W "+x -x" -- "$cur") )
             else
-                _filedir
+                _gim_files "$cur"
             fi
             ;;
         clone)
-            _filedir
+            _gim_files "$cur"
             ;;
         pick)
             case "$cur" in
                 -*) COMPREPLY=( $(compgen -W "--force -f" -- "$cur") ) ;;
-                *) _filedir ;;
+                *) _gim_files "$cur" ;;
             esac
             ;;
         commit)
             case "$cur" in
                 -*) COMPREPLY=( $(compgen -W "--amend --patch --file -F --message -m" -- "$cur") ) ;;
-                *) _filedir ;;
+                *) _gim_files "$cur" ;;
             esac
             ;;
         diff)
-            case "$cur" in
-                *)
-                    COMPREPLY=( $(compgen -W "$(git rev-parse --symbolic --branches --tags --remotes 2>/dev/null)" -- "$cur") )
-                    _filedir
-                    ;;
-            esac
+            COMPREPLY=( $(compgen -W "$(git rev-parse --symbolic --branches --tags --remotes 2>/dev/null)" -- "$cur") )
+            _gim_files "$cur"
             ;;
         fetch)
             case "$cur" in
@@ -87,7 +98,7 @@ _gim() {
         init)
             case "$cur" in
                 -*) COMPREPLY=( $(compgen -W "--local -l --bare -b" -- "$cur") ) ;;
-                *) _filedir -d ;;
+                *) _gim_dirs "$cur" ;;
             esac
             ;;
         log)
@@ -100,10 +111,10 @@ _gim() {
             COMPREPLY=( $(compgen -W "$(git branch --format='%(refname:short)')" -- "$cur") )
             ;;
         mkpatch)
-            _filedir
+            _gim_files "$cur"
             ;;
         mv)
-            _filedir
+            _gim_files "$cur"
             ;;
         pull)
             COMPREPLY=( $(compgen -W "$(git remote)" -- "$cur") )
@@ -122,10 +133,10 @@ _gim() {
             ;;
         remote)
             local sub="add remove rename"
-            if [ $cword -eq 2 ]; then
+            if [ $COMP_CWORD -eq 2 ]; then
                 COMPREPLY=( $(compgen -W "$sub" -- "$cur") )
             else
-                case "${words[2]}" in
+                case "${COMP_WORDS[2]}" in
                     remove|rename)
                         COMPREPLY=( $(compgen -W "$(git remote)" -- "$cur") )
                         ;;
@@ -138,13 +149,13 @@ _gim() {
         revert)
             case "$cur" in
                 -*) COMPREPLY=( $(compgen -W "--clean -c" -- "$cur") ) ;;
-                *) _filedir ;;
+                *) _gim_files "$cur" ;;
             esac
             ;;
         rm)
             case "$cur" in
                 -*) COMPREPLY=( $(compgen -W "--recurse -r --force -f" -- "$cur") ) ;;
-                *) _filedir ;;
+                *) _gim_files "$cur" ;;
             esac
             ;;
         rmbranch)
@@ -163,10 +174,10 @@ _gim() {
             ;;
         stash)
             local sub="push list show drop clear apply pop branch"
-            if [ $cword -eq 2 ]; then
+            if [ $COMP_CWORD -eq 2 ]; then
                 COMPREPLY=( $(compgen -W "$sub" -- "$cur") )
             else
-                case "${words[2]}" in
+                case "${COMP_WORDS[2]}" in
                     show|drop|apply|pop|branch)
                         COMPREPLY=( $(compgen -W "$(git stash list | sed -e 's/:.*//')" -- "$cur") )
                         ;;
@@ -187,10 +198,10 @@ _gim() {
             ;;
         tag)
             local sub="add delete list"
-            if [ $cword -eq 2 ]; then
+            if [ $COMP_CWORD -eq 2 ]; then
                 COMPREPLY=( $(compgen -W "$sub" -- "$cur") )
             else
-                case "${words[2]}" in
+                case "${COMP_WORDS[2]}" in
                     add)
                         case "$cur" in
                             -*) COMPREPLY=( $(compgen -W "--file -F --message -m --light -l" -- "$cur") ) ;;
