@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.57;
+our $VERSION = v0.0.58;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -2095,6 +2095,55 @@ directory will be set up. This is only recommended for strictly
 local use, i.e. for repositories that will not be cloned.
 },
     impl => q{git init --quiet [--bare] -- [...]
+}};
+
+}
+
+###################################################################
+package listrepos
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        $self->init_pager();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        my @command = ( 'gh', 'repo', 'list', $ARGV[0], '--json', 'name', '--limit', '1000', '-q', '.[] | .name' );
+        my $regex = $ARGV[1];
+
+        my $exe = executor->new( \@command );
+
+        while ( $exe->readln() )
+        {
+            next if ( defined( $regex ) && $_ !~ /$regex/ );
+            print( {$self->{ out }} $_ );
+        }
+
+        $exe->close_exe();
+        dbg::leave();
+        return;
+    }
+
+$_help{ listrepos } =
+{
+    category => q{info},
+    about => q{Show available repositories},
+    usage => q{gim listrepos <user|organization> [regex]
+},
+    help => q{Show available repositories.
+
+Shows a list of the user's, or organization's, repositories. An
+optional regular expression can be given to restrict the output to
+matching repositories only.
+},
+    impl => q{‘gh repo listrepos <user|organization> --json name -q '.[] | .name' [ | grep <regex>]’
 }};
 
 }
