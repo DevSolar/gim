@@ -3769,7 +3769,7 @@ package tag
         }
 
         push( @command, '--', @ARGV );
-        executor::run( \@command );
+        executor::run( \@command, interactive => ! defined( $light ) && ! ( defined( $file ) || defined( $msg ) ) );
         dbg::leave();
         return;
     }
