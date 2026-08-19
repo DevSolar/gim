@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.60;
+our $VERSION = v0.0.61;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -2980,7 +2980,7 @@ By default, will process each file with merge conflicts. By
 specifying filespecs, you can limit the process to those files
 / directories.
 },
-    impl => q{A wrapper for ‘git mergetool --no-prompt -- [...].
+    impl => q{A wrapper for ‘git mergetool --no-prompt -- [...]’.
 }};
 
 }
@@ -3039,6 +3039,48 @@ option, untracked files will be deleted as well.
 [...]’.
 
 The ‘--clean’ option adds ‘git clean --force -d --quiet [...]’.
+}};
+
+}
+
+###################################################################
+package review
+{
+    use parent -norequire => 'worker';
+
+    sub init ( $self )
+    {
+        dbg::enter();
+        util::argv_check( 1, 1 );
+        $self->init_git_dir();
+        dbg::leave();
+        return;
+    }
+
+    sub run ( $self )
+    {
+        dbg::enter();
+        util::filespec_check( 'TRACKED', @ARGV );
+        util::filespec_check( 'FILE', @ARGV );
+        my @command = ( 'git', 'difftool', '--no-prompt', 'HEAD', '--', @ARGV );
+        executor::run( \@command, interactive => 1, throw_on_fail => 0 );
+        dbg::leave();
+        return;
+    }
+
+$_help{ revert } =
+{
+    category => q{local},
+    about => q{Review local changes},
+    usage => q{gim review <filespec>
+},
+    help => q{Review local changes.
+
+Opens the given file in the configured difftool, the checked-in
+version and the local modified version side by side.
+},
+    impl => q{A wrapper for ‘git diftool --no-prompt HEAD --
+<filespec>’.
 }};
 
 }
