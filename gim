@@ -2457,7 +2457,7 @@ package mkpatch
     sub run ( $self )
     {
         dbg::enter();
-        my @command = ( 'tar', 'czf', $ARGV[0] // 'patch.tgz' );
+        my @files = ();
 
         foreach ( @{$self->{ 'status' }} )
         {
@@ -2488,9 +2488,26 @@ package mkpatch
                 );
             }
 
-            push( @command, $path );
+            if ( $path =~ m/^"(.*)"$/ )
+            {
+                $path = $1;
+                $path =~ s/\\([abefnrtv\\"'])/eval qq{"\\$1"}/ge;
+            }
+
+            if ( -e $path )
+            {
+                push( @files, $path );
+            }
         }
 
+        if ( ! @files )
+        {
+            print( util::localize( 'No local modifications to archive.' ) );
+            dbg::leave();
+            return;
+        }
+
+        my @command = ( 'tar', 'czf', $ARGV[0] // 'patch.tgz', '--', @files );
         executor::run( \@command, throw_on_fail => 0 );
         dbg::leave();
         return;
@@ -3151,12 +3168,18 @@ package rewrite
             $from = $ARGV[0];
         }
 
-        $ENV{ 'GIT_SEQUENCE_EDITOR' } = 'sed -i -e "1 s/pick/drop/"';
+        $ENV{ 'GIT_SEQUENCE_EDITOR' } = "$^X -i -pe 's/^pick/drop/ if \$. == 1'";
 
         @command = ( 'git', 'rebase', '-i', $from );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, interactive => 1, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            print( fmt::warning( util::localize( 'Rebase stopped due to conflicts. Resolve conflicts with ‘gim resolve’, then run ‘gim rebase continue’.' ) ) );
+        }
+
         dbg::leave();
-        return;
+        return $rc;
     }
 
 $_help{ rewrite } =
@@ -3322,7 +3345,7 @@ package purge
         dbg::enter();
         my $sep = "\x{1f}";
         my @command = ( 'git', 'for-each-ref', 'refs/heads',
-            "--format=%(HEAD) %(refname:short)${sep}%(upstream:short)${sep}%(push:short)${sep}%(push:track)" );
+            "--format=%(HEAD) %(refname:short)${sep}%(upstream:short)${sep}%(upstream:track)${sep}%(push:short)${sep}%(push:track)" );
         my $exe = executor->new( \@command );
         my @gone = ();
         my $current_gone;
@@ -3330,9 +3353,9 @@ package purge
         while ( $exe->readln() )
         {
             chomp;
-            my ( $branch, $upstream, $push, $track ) = split( $sep );
+            my ( $branch, $upstream, $upstream_track, $push, $push_track ) = split( $sep );
 
-            next if $track !~ /\[gone\]/;
+            next if ( ( $upstream_track // '' ) !~ /\[gone\]/ && ( $push_track // '' ) !~ /\[gone\]/ );
 
             if ( substr( $branch, 0, 1 ) eq '*' )
             {
