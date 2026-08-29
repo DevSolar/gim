@@ -11,7 +11,7 @@ use feature qw( signatures );
 use open    qw( :std :locale );
 use autodie qw( close );
 
-our $VERSION = v0.0.61;
+our $VERSION = v0.1;
 
 use Config          qw( %Config );
 use File::Path      qw( make_path );
@@ -2363,6 +2363,7 @@ package merge
     sub init ( $self )
     {
         dbg::enter();
+        util::argv_check( 1, -1 );
         $self->init_git_dir();
         dbg::leave();
         return;
@@ -2371,10 +2372,16 @@ package merge
     sub run ( $self )
     {
         dbg::enter();
-        my @command = ( 'git', 'merge', $ARGV[0] );
-        executor::run( \@command );
+        my @command = ( 'git', 'merge', @ARGV );
+        my ( $out, $err, $rc ) = executor::run( \@command, interactive => 1, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            print( fmt::warning( util::localize( 'Merge encountered conflicts. Please resolve with ‘gim resolve’, then run ‘gim commit’.' ) ) );
+        }
+
         dbg::leave();
-        return;
+        return $rc;
     }
 
 $_help{ merge } =
