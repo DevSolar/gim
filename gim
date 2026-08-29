@@ -996,7 +996,8 @@ package add
     sub init ( $self )
     {
         dbg::enter();
-        $self->init_pager();
+        util::argv_check( 1, -1 );
+        $self->init_git_dir();
         dbg::leave();
         return;
     }
@@ -1638,7 +1639,7 @@ package contains
         return;
     }
 
-$_help{ diff } =
+$_help{ contains } =
 {
     category => q{info},
     about => q{Show which branches contain commit},
@@ -2951,7 +2952,7 @@ package resolve
     sub init ( $self )
     {
         dbg::enter();
-        util::argv_check( 1, -1 );
+        util::argv_check( 0, -1 );
         $self->init_git_dir();
         dbg::leave();
         return;
@@ -2960,10 +2961,8 @@ package resolve
     sub run ( $self )
     {
         dbg::enter();
-        util::filespec_check( 'TRACKED', @ARGV );
-        util::filespec_check( 'FILE', @ARGV );
         my @command = ( 'git', 'mergetool', '--no-prompt', '--', @ARGV );
-        executor::run( \@command, throw_on_fail => 0 );
+        executor::run( \@command, interactive => 1, throw_on_fail => 0 );
         dbg::leave();
         return;
     }
@@ -3068,7 +3067,7 @@ package review
         return;
     }
 
-$_help{ revert } =
+$_help{ review } =
 {
     category => q{local},
     about => q{Review local changes},
@@ -3898,7 +3897,6 @@ package tag
     {
         dbg::enter();
         $self->init_git_dir();
-        $self->init_pager();
         dbg::leave();
         return;
     }
@@ -3929,7 +3927,7 @@ package tag
         if ( defined( $file ) && defined( $msg ) )
         {
             util::throw(
-                util::text( 'Conflicting options ‘[_1]’ and ‘[_2]’.', '--file', '--message' )
+                util::localize( 'Conflicting options ‘[_1]’ and ‘[_2]’.', '--file', '--message' )
             );
         }
 
@@ -3938,7 +3936,7 @@ package tag
             if ( defined( $file ) || defined( $msg ) )
             {
                 util::throw(
-                    util::text( 'Conflicting options ‘[_1]’ and ‘[_2]’.', '--light', ( defined( $file ) ? '--file' : '--message' ) )
+                    util::localize( 'Conflicting options ‘[_1]’ and ‘[_2]’.', '--light', ( defined( $file ) ? '--file' : '--message' ) )
                 );
             }
         }
@@ -3949,7 +3947,7 @@ package tag
 
         if ( defined( $file ) )
         {
-            util::check_filespecs( $E_ERROR, $file );
+            util::filespec_check( 'FILE', $file );
             push( @command, '--file', $file );
         }
 
@@ -3964,28 +3962,49 @@ package tag
         return;
     }
 
-    sub delete ( $self, @args ) # TODO: Delete remote lightweights as well
+    sub delete ( $self ) # TODO: Delete remote lightweights as well
     {
         dbg::enter();
-        $self->init();
         util::argv_check( 1, 1 );
-        my $type = util::check_tag( $args[0] );
-        my ( $upstream, $push ) = git::upstream( $self->{ current_branch } );
-        $push =~ s/\/.*//;
+        my $tag = $ARGV[0];
 
-        if ( $type eq "tag" )
+        my @check_cmd = ( 'git', 'cat-file', '-t', 'refs/tags/' . $tag );
+        my ( $type, $err, $rc ) = executor::run( \@check_cmd, throw_on_fail => 0 );
+        chomp $type;
+
+        if ( $rc != 0 )
         {
-            print( util::text( 'Tag ‘[_1]’ is an annotated tag.', $args[0] ) .
-                   util::text( 'Delete on remote ‘[_1]’ as well?', $push ) .
-                   util::text( 'Warning: This operation cannot be undone.' ) );
+            util::throw(
+                util::localize( 'Tag ‘[_1]’ does not exist.', $tag )
+            );
+        }
 
-            if ( util::confirmation() )
+        if ( $type eq 'tag' )
+        {
+            my @remotes_cmd = ( 'git', 'remote' );
+            my ( $remotes_out ) = executor::run( \@remotes_cmd, throw_on_fail => 0 );
+            my @remotes = grep { length } split( "\n", $remotes_out );
+
+            if ( @remotes )
             {
-                util::execute( "git push $push :refs/tags/$args[0]", rc => -1 );
+                print( util::localize( 'Tag ‘[_1]’ is an annotated tag.', $tag ) .
+                       fmt::warning( util::localize( 'Deleting an annotated tag on remotes cannot be undone.' ) ) );
+
+                foreach my $remote ( @remotes )
+                {
+                    print( util::localize( 'Delete on remote ‘[_1]’ as well? [y/N]: ', $remote ) );
+                    my $answer = readline( STDIN );
+                    if ( defined( $answer ) && $answer =~ m/^\s*y(?:es)?\s*$/i )
+                    {
+                        my @push_cmd = ( 'git', 'push', $remote, '--delete', $tag );
+                        executor::run( \@push_cmd, interactive => 1, throw_on_fail => 0 );
+                    }
+                }
             }
         }
 
-        util::execute( "git tag -d -- $args[0]", rc => -1, interactive => 1 );
+        my @del_cmd = ( 'git', 'tag', '-d', '--', $tag );
+        executor::run( \@del_cmd, interactive => 1 );
         dbg::leave();
         return;
     }
@@ -3993,12 +4012,13 @@ package tag
     sub list ( $self )
     {
         dbg::enter();
+        $self->init_pager();
         my $all;
         ::GetOptions(
             'all|a' => \$all,
         );
 
-        my @command = ( 'git', 'for-each-ref', '--sort=-taggerdate', '--format=%(objectname)%(*objectname:short=8)%(taggerdate:iso)%(taggerdate:relative)%(taggername)%(taggeremail)%(refname:lstrip=2)%(contents:subject)%(contents:body)' );
+        my @command = ( 'git', 'for-each-ref', '--sort=-taggerdate', '--format=%(objectname) %(*objectname:short=8) %(taggerdate:iso) %(taggerdate:relative) %(taggername) %(taggeremail) %(refname:lstrip=2) %(contents:subject) %(contents:body)' );
 
         if ( @ARGV )
         {
@@ -4016,7 +4036,7 @@ package tag
 
         while ( $exe->readln() )
         {
-            my ( $taghash, $hash, $time_iso, $time_rel, $name, $mail, $tag, $subject, $body ) = split( '' );
+            my ( $taghash, $hash, $time_iso, $time_rel, $name, $mail, $tag, $subject, $body ) = split( ' ' );
 
             if ( $hash eq '' )
             {
