@@ -2078,7 +2078,7 @@ package info
         );
 
         # Remote Branches
-        @command = ( 'git', 'branch', '--remotes', '--list', '--format=%(refname:lstrip=2)%(symref:lstrip=2)', $remote . '/*' );
+        @command = ( 'git', 'branch', '--remotes', '--list', "--format=%(refname:lstrip=2)\x{1f}%(symref:lstrip=2)", $remote . '/*' );
         my $exe = executor->new( \@command );
 
         while ( $exe->readln() )
@@ -2096,14 +2096,18 @@ package info
 
             if ( $self->{ verbose } && ! defined( $symref ) )
             {
-                my $log = git::log( '--max-count=1', $ref );
-                my ( $hash, $time_iso, $time_rel, $name, $msg ) = split( '', $exe->readln() );
-                $exe->close_exe();
-                printf( {$self->{ out }} '%s  %s  %s',
-                    fmt::time( $time_rel ),
-                    fmt::name( $name ),
-                    $msg
-                );
+                my $log = logger->new( [ '--max-count=1', $remote . '/' . $ref ] );
+                if ( $log->readln_fmt() )
+                {
+                    my ( $graph, $hash, $authorName, $authorTimeRel, $authorTimeIso,
+                         $commitName, $commitTimeRel, $commitTimeIso, $subject, $description ) = @{$_};
+                    printf( {$self->{ out }} "      %s  %s  %s\n",
+                        fmt::time( $authorTimeRel ),
+                        fmt::name( $authorName ),
+                        $subject
+                    );
+                }
+                $log->close_exe();
             }
         }
 
@@ -2603,7 +2607,19 @@ package pull
         print( {$self->{ out }} ' ' . util::localize( 'Merging...' ) );
         bless( $self, 'rebase' );
         @ARGV = ( 'start', '--quiet', @orig_argv );
-        $self->run();
+        my $rebase_rc = $self->run();
+
+        if ( $rebase_rc != 0 )
+        {
+            print( {$self->{ out }} fmt::warning( util::localize( 'Rebase encountered conflicts. Please resolve conflicts with ‘gim resolve’, then run ‘gim rebase continue’.' ) ) );
+            if ( $self->{ 'local_modifications' } )
+            {
+                print( {$self->{ out }} fmt::warning( util::localize( 'Your uncommitted local changes are saved in ‘stash@{0}’ and can be restored with ‘gim stash pop’ after the rebase completes.' ) ) );
+            }
+            dbg::leave();
+            return;
+        }
+
         print( {$self->{ out}} ' ' . util::localize( 'Done.' ) );
 
         if ( $self->{ 'local_modifications' } )
@@ -2614,7 +2630,7 @@ package pull
 
             if ( $rc )
             {
-                print( {$self->{ out }} ' ' . util::localize( 'Re-applying your local changes failed due to collisions.\nThey are preserved on top of the stash.' ) );
+                print( {$self->{ out }} fmt::warning( util::localize( 'Re-applying your local changes encountered collisions.\nConflict markers were applied, and changes are preserved on top of the stash.' ) ) );
             }
         }
 
@@ -2773,18 +2789,18 @@ package rebase
     {
         dbg::enter();
         my $command = util::subcommand( 'start' );
-        $self->$command();
+        my $rc = $self->$command();
         dbg::leave();
-        return;
+        return $rc;
     }
 
     sub start ( $self )
     {
         dbg::enter();
         my @command = ( 'git', 'rebase', @ARGV );
-        executor::run( \@command, interactive => 1 );
+        my ( $out, $err, $rc ) = executor::run( \@command, interactive => 1, throw_on_fail => 0 );
         dbg::leave();
-        return;
+        return $rc;
     }
 
     sub abort ( $self )
@@ -3475,16 +3491,16 @@ package stash
     {
         dbg::enter();
         my $command = util::subcommand( 'push' );
-        $self->$command();
+        my $rc = $self->$command();
         dbg::leave();
-        return;
+        return $rc;
     }
 
     sub apply ( $self )
     {
         dbg::enter();
         my @command = ( 'git', 'stash', 'apply', @ARGV );
-        my ( $out, $err, $rc ) = executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, interactive => 1, throw_on_fail => 0 );
         dbg::leave();
         return $rc;
     }
@@ -3527,7 +3543,7 @@ package stash
             return;
         }
 
-        my $stash_fmt = '--pretty=format:%gd%h%aN%ar%ai%cN%cr%ci%s%C(auto)%d';
+        my $stash_fmt = '--pretty=format:%gd %h %aN %ar %ai %cN %cr %ci %s %C(auto)%d';
         my $log = logger->new( [ $stash_fmt, 'refs/stash' ], walk_reflogs => 1 );
 
         while ( $log->readln_fmt() )
@@ -3552,9 +3568,9 @@ package stash
     {
         dbg::enter();
         my @command = ( 'git', 'stash', 'pop', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, interactive => 1, throw_on_fail => 0 );
         dbg::leave();
-        return;
+        return $rc;
     }
 
     sub push ( $self )
