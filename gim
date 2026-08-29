@@ -686,7 +686,7 @@ package dbg
     # Opens file handle $_dbg to write to gim.log.
     sub init ( $, $ )
     {
-        if ( ! open( $_dbg, '>', 'gim.log' ) )
+        if ( ! open( $_dbg, '>:encoding(UTF-8)', 'gim.log' ) )
         {
             util::throw(
                 util::localize( 'Could not open ‘[_1]’.', 'gim.log' ) .
@@ -889,31 +889,25 @@ package worker
 
         $Text::Wrap::columns = ( `tput cols 2> /dev/null` || 76 );
 
-        if ( -t STDOUT || -t STDERR )
+        if ( -t STDOUT && -t STDIN && ( $ENV{ TERM } // '' ) ne 'dumb' )
         {
-            open( $self->{ pager }, '|-', 'less -FeRXS' ) || die;
-        }
-
-        if ( -t STDOUT )
-        {
-            open( $self->{ out }, '>&', $self->{ pager } ) || die;
-            $self->{ out_paged } = 1;
+            if ( open( $self->{ pager }, '|-', 'less -FeRXS' ) )
+            {
+                open( $self->{ out }, '>&', $self->{ pager } );
+                $self->{ out_paged } = 1;
+            }
+            else
+            {
+                $self->{ out } = \*STDOUT;
+            }
         }
         else
         {
-            $ENV{ ANSI_COLORS_DISABLED } = 1;
+            $ENV{ ANSI_COLORS_DISABLED } = 1 unless -t STDOUT;
             $self->{ out } = \*STDOUT;
         }
 
-        if ( -t STDERR )
-        {
-            open( $self->{ err }, '>&', $self->{ pager } ) || die;
-            $self->{ err_paged } = 1;
-        }
-        else
-        {
-            $self->{ err } = \*STDERR;
-        }
+        $self->{ err } = \*STDERR;
 
         dbg::leave();
         return;
@@ -1349,7 +1343,7 @@ package chmod
     sub init ( $self )
     {
         dbg::enter();
-        $self->init_pager();
+        $self->init_git_dir();
         dbg::leave();
         return;
     }
@@ -1515,7 +1509,7 @@ package commit
     sub init ( $self )
     {
         dbg::enter();
-        $self->init_pager();
+        $self->init_git_dir();
         dbg::leave();
         return;
     }
@@ -1723,7 +1717,6 @@ package fetch
     {
         dbg::enter();
         $self->init_git_dir();
-        $self->init_pager();
         dbg::leave();
         return;
     }
@@ -3171,7 +3164,7 @@ package rewrite
         $ENV{ 'GIT_SEQUENCE_EDITOR' } = "$^X -i -pe 's/^pick/drop/ if \$. == 1'";
 
         @command = ( 'git', 'rebase', '-i', $from );
-        my ( $out, $err, $rc ) = executor::run( \@command, interactive => 1, throw_on_fail => 0 );
+        ( $out, $err, $rc ) = executor::run( \@command, interactive => 1, throw_on_fail => 0 );
 
         if ( $rc != 0 )
         {
