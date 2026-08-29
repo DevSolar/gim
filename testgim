@@ -16,6 +16,7 @@ use constant TESTDIR => '.testgim.dir';
 
 BEGIN
 {
+    $ENV{ PERL_BADLANG } = '0';
     remove_tree( TESTDIR );
 
     local $@ = '';
