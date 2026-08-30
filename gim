@@ -3564,7 +3564,7 @@ package stash
             return;
         }
 
-        my $stash_fmt = '--pretty=format:%gd %h %aN %ar %ai %cN %cr %ci %s %C(auto)%d';
+        my $stash_fmt = "--pretty=format:%gd\x{1f}%h\x{1f}%aN\x{1f}%ar\x{1f}%ai\x{1f}%cN\x{1f}%cr\x{1f}%ci\x{1f}%s\x{1f}%C(auto)%d";
         my $log = logger->new( [ $stash_fmt, 'refs/stash' ], walk_reflogs => 1 );
 
         while ( $log->readln_fmt() )

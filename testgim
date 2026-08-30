@@ -387,6 +387,20 @@ $val = commit->new();
 assert_throw( '$val->run()', ::colored( "Error:\n", 'red' ) . " ‘baz’ does not exist.\n" );
 
 ############################
+dbg::msg( '=== stash ===' );
+############################
+
+write_to_file( 'stash_test.txt', 'stash test' );
+@command = ( 'git', 'add', 'stash_test.txt' );
+executor::run( \@command );
+@command = ( 'git', 'stash' );
+executor::run( \@command );
+local @ARGV = ( 'list' );
+$val = stash->new();
+assert_nothrow( '$val->run()' );
+undef( $val );
+
+############################
 dbg::msg( '=== Done. ===' );
 ############################
 
