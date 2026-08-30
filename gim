@@ -49,8 +49,7 @@ BEGIN
         # Pull package from GitHub to ~/.config/gim.
         make_path( PACKAGE_DIR . 'Capture' );
         system( 'curl -L -f -s ' .
-                # Version v0.50
-                'https://raw.githubusercontent.com/dagolden/Capture-Tiny/2e1a5a6a71a69b1be837683f3e216c144bec8a6c/lib/Capture/Tiny.pm ' .
+                'https://raw.githubusercontent.com/dagolden/Capture-Tiny/refs/tags/release-0.50/lib/Capture/Tiny.pm ' .
                 PACKAGE_DIR .
                 'Capture/Tiny.pm' );
         use if ! $rc, lib => PACKAGE_DIR;
@@ -70,8 +69,7 @@ BEGIN
     {
         make_path( PACKAGE_DIR . 'Config' );
         system( 'curl -L -f -s ' .
-                # Version 3.001000
-                'https://raw.githubusercontent.com/shlomif/perl-Config-IniFiles/7040f46c00fade6ed81af18589c0de9b8d2f667a/config-inifiles/lib/Config/IniFiles.pm ' .
+                'https://raw.githubusercontent.com/shlomif/perl-Config-IniFiles/refs/tags/releases/3.003000/config-inifiles/lib/Config/IniFiles.pm ' .
                 PACKAGE_DIR .
                 'Config/IniFiles.pm' );
         use if ! $rc, lib => PACKAGE_DIR;
