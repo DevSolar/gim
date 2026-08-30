@@ -3465,9 +3465,9 @@ package setup
         $self->set( 'core.editor', prompt => util::localize( 'Please enter [_1]:', 'core.editor (Default: vi)' ) );
         $self->set( 'merge.tool', prompt => util::localize( 'Please enter [_1]:', 'merge.tool (Default: vimdiff)' ) );
 
-        $self->set( 'init.defaultBranch', 'main' );
-        $self->set( 'pull.rebase', 'true' );
-        $self->set( 'core.autocrlf', 'input' );
+        $self->set( 'init.defaultBranch', value => 'main' );
+        $self->set( 'pull.rebase', value => 'true' );
+        $self->set( 'core.autocrlf', value => 'input' );
 
         dbg::leave();
         return;

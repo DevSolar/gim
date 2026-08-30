@@ -401,6 +401,15 @@ assert_nothrow( '$val->run()' );
 undef( $val );
 
 ############################
+dbg::msg( '=== setup ===' );
+############################
+
+local @ARGV = ();
+$val = setup->new();
+assert_nothrow( '$val->run()' );
+undef( $val );
+
+############################
 dbg::msg( '=== Done. ===' );
 ############################
 
