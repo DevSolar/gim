@@ -404,6 +404,8 @@ undef( $val );
 dbg::msg( '=== setup ===' );
 ############################
 
+local *STDIN;
+open( STDIN, '<', \"\n\n\n\n\n\n\n\n\n\n" );
 local @ARGV = ();
 $val = setup->new();
 assert_nothrow( '$val->run()' );

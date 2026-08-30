@@ -3425,49 +3425,317 @@ package setup
 {
     use parent -norequire => 'worker';
 
-    sub set ( $self, $setting, %options )
+    sub _config_paths ()
     {
-        dbg::enter();
-        my %opts = ( value => undef, prompt => undef, %options );
+        my $xdg_home = $ENV{ XDG_CONFIG_HOME } // ( $ENV{ HOME } . '/.config' );
+        my $xdg_dir = $xdg_home . '/git';
+        my ( $main_config, $local_config, $local_rel );
 
-        my @command = ( 'git', 'config', $setting );
-        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
-
-        if ( $rc != 0 )
+        if ( -d $xdg_dir || -d $xdg_home )
         {
-            if ( defined( $opts{ prompt } ) )
-            {
-                print( $opts{ prompt } );
-                $opts{ value } = readline( STDIN );
-
-                if ( ! defined( $opts{ value } ) )
-                {
-                    util::throw( util::localize( 'Input aborted.' ) );
-                }
-
-                chomp( $opts{ value } );
-            }
-
-            @command = ( 'git', 'config', '--global', $setting, $opts{ value } );
-            executor::run( \@command );
+            $main_config = "$xdg_dir/config";
+            $local_config = "$xdg_dir/config.local";
+            $local_rel = 'config.local';
+        }
+        else
+        {
+            $main_config = $ENV{ HOME } . '/.gitconfig';
+            $local_config = $ENV{ HOME } . '/.gitconfig.local';
+            $local_rel = '.gitconfig.local';
         }
 
-        dbg::leave();
-        return;
+        return ( $main_config, $local_config, $local_rel );
+    }
+
+    sub _ensure_include ( $main_config, $local_config, $local_rel )
+    {
+        my @command = ( 'git', 'config', '--file', $main_config, '--get-all', 'include.path' );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+        my @includes = split( "\n", $out // '' );
+        my $found = grep { $_ eq $local_rel || $_ eq $local_config || $_ eq 'gitconfig.local' || $_ eq '.gitconfig.local' } @includes;
+
+        if ( ! $found )
+        {
+            my @add_cmd = ( 'git', 'config', '--file', $main_config, '--add', 'include.path', $local_rel );
+            executor::run( \@add_cmd, throw_on_fail => 0 );
+        }
+    }
+
+    sub _get_setting ( $main_config, $local_config, $setting )
+    {
+        my ( $val, $err, $rc ) = executor::run( [ 'git', 'config', '--file', $local_config, $setting ], throw_on_fail => 0 );
+        chomp( $val ) if defined( $val );
+        return $val if defined( $val ) && length( $val );
+
+        ( $val, $err, $rc ) = executor::run( [ 'git', 'config', '--file', $main_config, $setting ], throw_on_fail => 0 );
+        chomp( $val ) if defined( $val );
+        return $val if defined( $val ) && length( $val );
+
+        ( $val, $err, $rc ) = executor::run( [ 'git', 'config', '--get', $setting ], throw_on_fail => 0 );
+        chomp( $val ) if defined( $val );
+        return $val;
+    }
+
+    sub _set_local ( $main_config, $local_config, $setting, $value )
+    {
+        my @command = ( 'git', 'config', '--file', $local_config, $setting, $value );
+        executor::run( \@command, throw_on_fail => 0 );
+        @command = ( 'git', 'config', '--file', $main_config, '--unset-all', $setting );
+        executor::run( \@command, throw_on_fail => 0 );
+    }
+
+    sub _prompt_identity ( $main_config, $local_config, $setting, $prompt_label )
+    {
+        my $current = _get_setting( $main_config, $local_config, $setting );
+
+        print( util::localize( 'Please enter [_1]', $prompt_label ) );
+        if ( defined( $current ) && length( $current ) )
+        {
+            print( ' [' . $current . ']: ' );
+        }
+        else
+        {
+            print( ': ' );
+        }
+
+        my $ans = readline( STDIN );
+        if ( ! defined( $ans ) )
+        {
+            util::throw( util::localize( 'Input aborted.' ) );
+        }
+        chomp( $ans );
+        $ans =~ s/^\s+|\s+$//g;
+
+        my $value = ( length( $ans ) ? $ans : $current );
+        if ( defined( $value ) && length( $value ) )
+        {
+            _set_local( $main_config, $local_config, $setting, $value );
+        }
+    }
+
+    sub _prompt_editor ( $main_config, $local_config )
+    {
+        my @candidates = qw( vim nvim nano code emacs vi gedit helix subl );
+        my @available = ();
+
+        foreach my $ed ( @candidates )
+        {
+            my ( $out, $err, $rc ) = executor::run( [ 'which', $ed ], throw_on_fail => 0 );
+            if ( $rc == 0 )
+            {
+                push( @available, $ed );
+            }
+        }
+
+        my $current = _get_setting( $main_config, $local_config, 'core.editor' );
+        $current //= ( $ENV{ VISUAL } // $ENV{ EDITOR } // 'vim' );
+
+        print( fmt::header( util::localize( 'Select core.editor:' ) ) . "\n" );
+        my $idx = 1;
+        foreach my $ed ( @available )
+        {
+            printf( "  %2d) %s\n", $idx++, $ed );
+        }
+        printf( "  %2d) %s\n", $idx, util::localize( 'Custom / Other...' ) );
+
+        print( util::localize( 'Choice' ) . ' [' . $current . ']: ' );
+        my $ans = readline( STDIN );
+        if ( ! defined( $ans ) )
+        {
+            util::throw( util::localize( 'Input aborted.' ) );
+        }
+        chomp( $ans );
+        $ans =~ s/^\s+|\s+$//g;
+
+        my $chosen = $current;
+        if ( length( $ans ) )
+        {
+            if ( $ans =~ /^\d+$/ && $ans >= 1 && $ans <= scalar( @available ) )
+            {
+                $chosen = $available[ $ans - 1 ];
+            }
+            elsif ( $ans =~ /^\d+$/ && $ans == scalar( @available ) + 1 )
+            {
+                print( util::localize( 'Enter editor command: ' ) );
+                my $custom = readline( STDIN );
+                if ( defined( $custom ) )
+                {
+                    chomp( $custom );
+                    $custom =~ s/^\s+|\s+$//g;
+                    $chosen = $custom if length( $custom );
+                }
+            }
+            else
+            {
+                $chosen = $ans;
+            }
+        }
+
+        _set_local( $main_config, $local_config, 'core.editor', $chosen );
+    }
+
+    sub _prompt_mergetool ( $main_config, $local_config )
+    {
+        my ( $help_out, $err, $rc ) = executor::run( [ 'git', 'mergetool', '--tool-help' ], throw_on_fail => 0 );
+        my @available = ();
+        my $in_available = 0;
+
+        foreach my $line ( split( "\n", $help_out // '' ) )
+        {
+            if ( $line =~ /may be set to one of the following:/ )
+            {
+                $in_available = 1;
+                next;
+            }
+            elsif ( $line =~ /valid, but not currently available/ )
+            {
+                $in_available = 0;
+                next;
+            }
+
+            if ( $in_available && $line =~ /^\s*(\S+)\s+(.*)/ )
+            {
+                push( @available, [ $1, $2 ] );
+            }
+        }
+
+        my $current = _get_setting( $main_config, $local_config, 'merge.tool' );
+        $current //= 'vimdiff';
+
+        print( fmt::header( util::localize( 'Select merge.tool:' ) ) . "\n" );
+        my $idx = 1;
+        foreach my $item ( @available )
+        {
+            printf( "  %2d) %-12s (%s)\n", $idx++, $item->[0], $item->[1] );
+        }
+        printf( "  %2d) %s\n", $idx, util::localize( 'Custom / Other...' ) );
+
+        print( util::localize( 'Choice' ) . ' [' . $current . ']: ' );
+        my $ans = readline( STDIN );
+        if ( ! defined( $ans ) )
+        {
+            util::throw( util::localize( 'Input aborted.' ) );
+        }
+        chomp( $ans );
+        $ans =~ s/^\s+|\s+$//g;
+
+        my $chosen = $current;
+        if ( length( $ans ) )
+        {
+            if ( $ans =~ /^\d+$/ && $ans >= 1 && $ans <= scalar( @available ) )
+            {
+                $chosen = $available[ $ans - 1 ][0];
+            }
+            elsif ( $ans =~ /^\d+$/ && $ans == scalar( @available ) + 1 )
+            {
+                print( util::localize( 'Enter merge tool name: ' ) );
+                my $custom = readline( STDIN );
+                if ( defined( $custom ) )
+                {
+                    chomp( $custom );
+                    $custom =~ s/^\s+|\s+$//g;
+                    $chosen = $custom if length( $custom );
+                }
+            }
+            else
+            {
+                $chosen = $ans;
+            }
+        }
+
+        _set_local( $main_config, $local_config, 'merge.tool', $chosen );
+    }
+
+    sub _setup_recommended ( $self, $main_config, $local_config )
+    {
+        my @defaults = (
+            {
+                key   => 'init.defaultBranch',
+                value => 'main',
+                desc  => util::localize( 'Set default branch name for new repositories to "main"' ),
+            },
+            {
+                key   => 'pull.rebase',
+                value => 'true',
+                desc  => util::localize( 'Rebase local commits when pulling to keep history linear' ),
+            },
+            {
+                key   => 'submodule.recurse',
+                value => 'true',
+                desc  => util::localize( 'Automatically recurse into submodules on checkout/pull' ),
+            },
+            {
+                key   => 'core.autocrlf',
+                value => 'input',
+                desc  => util::localize( 'Convert CRLF to LF on commit, keeping LF on checkout' ),
+            },
+            {
+                key   => 'core.filemode',
+                value => 'false',
+                desc  => util::localize( 'Ignore OS file permission bit changes to prevent diff noise' ),
+            },
+        );
+
+        print( "\n" . fmt::header( util::localize( 'Configuring gim recommended defaults:' ) ) . "\n" );
+
+        foreach my $item ( @defaults )
+        {
+            my $current = _get_setting( $main_config, $local_config, $item->{ key } );
+
+            # Remove from local_config so it lives cleanly in main_config
+            executor::run( [ 'git', 'config', '--file', $local_config, '--unset-all', $item->{ key } ], throw_on_fail => 0 );
+
+            if ( ! defined( $current ) || length( $current ) == 0 )
+            {
+                executor::run( [ 'git', 'config', '--file', $main_config, $item->{ key }, $item->{ value } ], throw_on_fail => 0 );
+                print( fmt::ok( util::localize( 'Set [_1] = [_2] ([_3])', $item->{ key }, $item->{ value }, $item->{ desc } ) ) . "\n" );
+            }
+            elsif ( lc( $current ) eq lc( $item->{ value } ) )
+            {
+                executor::run( [ 'git', 'config', '--file', $main_config, $item->{ key }, $item->{ value } ], throw_on_fail => 0 );
+                print( '  ' . util::localize( '[_1] is already set to ‘[_2]’.', $item->{ key }, $current ) . "\n" );
+            }
+            else
+            {
+                print( fmt::warning( util::localize( '[_1] is currently set to ‘[_2]’.', $item->{ key }, $current ) ) . "\n" );
+                print( '  ' . util::localize( 'gim recommends ‘[_1]’: [_2]', $item->{ value }, $item->{ desc } ) . "\n" );
+                print( '  ' . util::localize( 'Update [_1] to ‘[_2]’? [y/N]: ', $item->{ key }, $item->{ value } ) );
+
+                my $ans = readline( STDIN );
+                if ( defined( $ans ) && $ans =~ m/^\s*y(?:es)?\s*$/i )
+                {
+                    executor::run( [ 'git', 'config', '--file', $main_config, $item->{ key }, $item->{ value } ], throw_on_fail => 0 );
+                    print( '  ' . util::localize( 'Updated [_1] to ‘[_2]’.', $item->{ key }, $item->{ value } ) . "\n" );
+                }
+                else
+                {
+                    executor::run( [ 'git', 'config', '--file', $main_config, $item->{ key }, $current ], throw_on_fail => 0 );
+                    print( '  ' . util::localize( 'Kept [_1] = ‘[_2]’.', $item->{ key }, $current ) . "\n" );
+                }
+            }
+        }
     }
 
     sub run ( $self )
     {
         dbg::enter();
 
-        $self->set( 'user.name', prompt => util::localize( 'Please enter [_1]:', 'user.name' ) );
-        $self->set( 'user.email', prompt => util::localize( 'Please enter [_1]:', 'user.email' ) );
-        $self->set( 'core.editor', prompt => util::localize( 'Please enter [_1]:', 'core.editor (Default: vi)' ) );
-        $self->set( 'merge.tool', prompt => util::localize( 'Please enter [_1]:', 'merge.tool (Default: vimdiff)' ) );
+        my ( $main_config, $local_config, $local_rel ) = _config_paths();
+        _ensure_include( $main_config, $local_config, $local_rel );
 
-        $self->set( 'init.defaultBranch', value => 'main' );
-        $self->set( 'pull.rebase', value => 'true' );
-        $self->set( 'core.autocrlf', value => 'input' );
+        print( fmt::header( util::localize( 'Main configuration file:  [_1]', $main_config ) ) . "\n" );
+        print( fmt::header( util::localize( 'Local configuration file: [_1]', $local_config ) ) . "\n\n" );
+
+        _prompt_identity( $main_config, $local_config, 'user.name', 'user.name' );
+        _prompt_identity( $main_config, $local_config, 'user.email', 'user.email' );
+        print( "\n" );
+
+        _prompt_editor( $main_config, $local_config );
+        print( "\n" );
+
+        _prompt_mergetool( $main_config, $local_config );
+
+        $self->_setup_recommended( $main_config, $local_config );
 
         dbg::leave();
         return;
@@ -3484,6 +3752,9 @@ $_help{ setup } =
 Git relies on some basic configuration to work.
 
 With ‘gim setup’, you can get this done in one go.
+
+Even if you have a previous git configuration, run ‘gim setup’ anyway,
+it will make suggestions if your past settings could be improved upon.
 },
     impl => q{A wrapper for a couple of ‘git config’ calls.
 
