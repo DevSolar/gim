@@ -2030,6 +2030,7 @@ package fetch
     {
         dbg::enter();
         $self->init_git_dir();
+        $self->init_pager();
         dbg::leave();
         return;
     }
@@ -2100,7 +2101,6 @@ package fetch
                 ) );
             }
         }
-
 
         if ( ! defined( $quiet ) )
         {
