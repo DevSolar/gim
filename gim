@@ -897,12 +897,14 @@ package worker
             else
             {
                 $self->{ out } = \*STDOUT;
+                $self->{ out_paged } = 0;
             }
         }
         else
         {
             $ENV{ ANSI_COLORS_DISABLED } = 1 unless -t STDOUT;
             $self->{ out } = \*STDOUT;
+            $self->{ out_paged } = 0;
         }
 
         $self->{ err } = \*STDERR;
@@ -1715,6 +1717,7 @@ package fetch
     {
         dbg::enter();
         $self->init_git_dir();
+        $self->init_pager();
         dbg::leave();
         return;
     }
@@ -1728,18 +1731,18 @@ package fetch
         );
 
         my @tags;
-        my @command = ( 'git', 'for-each-ref', '--format="%(objecttype)%(refname:lstrip=2)%(objectname)"', 'refs/tags/*' );
+        my @command = ( 'git', 'for-each-ref', "--format=%(objecttype)\x{1f}%(refname:lstrip=2)\x{1f}%(objectname)", 'refs/tags/*' );
         my $exe = executor->new( \@command );
 
         while ( $exe->readln() )
         {
             chomp;
-            my ( $type, $name, $hash ) = split( '\x{1f}' );
+            my ( $type, $name, $hash ) = split( "\x{1f}" );
 
             if ( $type eq 'commit' )
             {
                 dbg::msg( "Saving lightweight tag \"$name $hash\"" );
-                push( @tags, "$name $hash" );
+                push( @tags, [ $name, $hash ] );
             }
         }
 
@@ -1749,17 +1752,16 @@ package fetch
         @command = ( 'git', 'fetch', '--all', '--prune', '--prune-tags' );
         executor::run( \@command );
 
-        foreach ( @tags )
+        foreach my $tag ( @tags )
         {
-            dbg::msg( "Re-applying lightweight tag \"$_\"" );
-            @command = ( 'git', 'tag', $_ );
+            dbg::msg( "Re-applying lightweight tag \"$tag->[0] $tag->[1]\"" );
+            @command = ( 'git', 'tag', $tag->[0], $tag->[1] );
             executor::run( \@command );
         }
 
-        print( {$self->{ out }} util::localize( 'Local repository up to date.' ) );
-
         if ( ! defined( $quiet ) )
         {
+            print( {$self->{ out }} util::localize( 'Local repository up to date.' ) );
             $self->init_status();
             $self->init_ahead_behind();
             bless( $self, 'status' );
@@ -2645,7 +2647,7 @@ package pull
 
             if ( $rc )
             {
-                print( {$self->{ out }} fmt::warning( util::localize( 'Re-applying your local changes encountered collisions.\nConflict markers were applied, and changes are preserved on top of the stash.' ) ) );
+                print( {$self->{ out }} fmt::warning( util::localize( "Re-applying your local changes encountered collisions.\nConflict markers were applied, and changes are preserved on top of the stash." ) ) );
             }
         }
 
@@ -4326,7 +4328,10 @@ package tag
             'all|a' => \$all,
         );
 
-        my @command = ( 'git', 'for-each-ref', '--sort=-taggerdate', '--format=%(objectname) %(*objectname:short=8) %(taggerdate:iso) %(taggerdate:relative) %(taggername) %(taggeremail) %(refname:lstrip=2) %(contents:subject) %(contents:body)' );
+        my @command = (
+            'git', 'for-each-ref', '--sort=-taggerdate',
+            "--format=%(objecttype)\x{1f}%(objectname)\x{1f}%(*objectname:short=8)\x{1f}%(taggerdate:iso)\x{1f}%(taggerdate:relative)\x{1f}%(taggername)\x{1f}%(taggeremail)\x{1f}%(authorname)\x{1f}%(authordate:iso)\x{1f}%(authordate:relative)\x{1f}%(refname:lstrip=2)\x{1f}%(contents:subject)\x{1f}%(contents:body)"
+        );
 
         if ( @ARGV )
         {
@@ -4344,18 +4349,24 @@ package tag
 
         while ( $exe->readln() )
         {
-            my ( $taghash, $hash, $time_iso, $time_rel, $name, $mail, $tag, $subject, $body ) = split( ' ' );
+            chomp;
+            my ( $type, $taghash, $hash, $tag_iso, $tag_rel, $tagger, $tmail, $author, $auth_iso, $auth_rel, $tag, $subject, $body ) = split( "\x{1f}", $_, 13 );
 
-            if ( $hash eq '' )
+            my $time_iso = ( $type eq 'tag' ) ? $tag_iso : $auth_iso;
+            my $time_rel = ( $type eq 'tag' ) ? $tag_rel : $auth_rel;
+            my $name     = ( $type eq 'tag' ) ? $tagger  : $author;
+
+            if ( $type ne 'tag' )
             {
-                # Lightweight tags have no hash of their own
-                # so the object hash *is* already the commit
-                $hash = $taghash;
-                # Also, their contents:subject is that of the
-                # tagged commit (obviously).
-                $subject = "\b\b";
-                $body = '';
+                # Lightweight tags have no tag object of their own;
+                # the object hash is the commit itself.
+                $hash = substr( $taghash, 0, $cfg->val( 'options', 'hash_length' ) );
             }
+
+            $subject //= '';
+            $name    //= '';
+            $time_iso //= '';
+            $time_rel //= '';
 
             if ( defined( $all ) )
             {
@@ -4392,7 +4403,8 @@ There are two different kinds of tags: Annotated, meaning these
 are given a message similar to a commit message; and lightweight,
 which are not given such a message. Within Gim we use lightweight
 tags for local use only and never push them to remotes, whereas
-annotated tags are always pushed.
+annotated tags reachable from the pushed branch are pushed when
+pushing.
 
 Annotated tags that got deleted on the remote will get deleted
 locally when you next ‘gim fetch’ from the remote. Lightweight
