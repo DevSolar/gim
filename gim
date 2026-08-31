@@ -1422,7 +1422,7 @@ package clone
     sub init ( $self )
     {
         dbg::enter();
-        util::argv_check( 2, -1 );
+        util::argv_check( 1, -1 );
         dbg::leave();
     }
 
