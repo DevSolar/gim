@@ -4139,7 +4139,7 @@ package switch
 
         if ( $rc == 128 )
         {
-            @command = ( 'git', 'rev-parse', $ARGV[0] . '^{commit]' );
+            @command = ( 'git', 'rev-parse', $ARGV[0] . '^{commit}' );
             ( $out, $err, $rc ) = executor::run( \@command );
 
             if ( $rc == 0 )
