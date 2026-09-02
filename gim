@@ -832,7 +832,16 @@ package worker
     {
         dbg::enter();
         my @command = ( 'git', 'rev-parse', '--git-dir' );
-        ( $self->{ git_dir }, my $err, my $rc ) = executor::run( \@command );
+        ( $self->{ git_dir }, my $err, my $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            util::throw(
+                util::localize( 'Not inside a git repository.' ) .
+                util::localize( 'Run \'gim init\' or \'gim clone\' first.' )
+            );
+        }
+
         dbg::leave();
         return;
     }
@@ -1093,13 +1102,33 @@ package base
     {
         dbg::enter();
         my @command = ( 'git', 'merge-base', @ARGV );
-        my ( $out, $err, $rc ) = executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
 
-        if ( util::rc_check( $rc, 'git merge-base', $err ) == 0 )
+        if ( $rc != 0 )
         {
-            print( util::localize( 'Common base commit: [_1]', $out ) );
+            if ( $err =~ /Not a valid object name/i || $err =~ /unknown revision/i )
+            {
+                util::throw(
+                    util::localize( 'One of the given revisions is not a known commit or branch.' )
+                );
+            }
+            elsif ( $rc == 1 )
+            {
+                # git merge-base exits 1 when there is no common ancestor
+                util::throw(
+                    util::localize( 'The two commits have no common ancestor (unrelated histories).' )
+                );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( 'Failure while executing \'git merge-base\'.' ) .
+                    "\n" . $err . "\n"
+                );
+            }
         }
 
+        print( util::localize( 'Common base commit: [_1]', $out ) );
         dbg::leave();
         return;
     }
@@ -1148,7 +1177,32 @@ package bisect
     {
         dbg::enter();
         my @command = ( 'git', 'bisect', 'start', '--term-new=new', '--term-old=old', '--first-parent', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /already in a bisect/i )
+            {
+                util::throw(
+                    util::localize( 'Already in a bisect session. Run \'gim bisect end\' first.' )
+                );
+            }
+            elsif ( $err =~ /dirty\b|local changes/i || $err =~ /Cannot bisect/i )
+            {
+                util::throw(
+                    util::localize( 'Working directory has local modifications.' ) .
+                    util::localize( 'Commit or stash them before starting a bisect.' )
+                );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( 'Failure while executing \'git bisect start\'.' ) .
+                    "\n" . $err . "\n"
+                );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -1157,7 +1211,17 @@ package bisect
     {
         dbg::enter();
         my @command = ( 'git', 'bisect', 'new', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            util::throw(
+                ( $err =~ /You need to start/i )
+                    ? util::localize( 'Not in a bisect session. Start one with \'gim bisect start\' first.' )
+                    : util::localize( 'Failure while marking commit.' ) . "\n" . $err . "\n"
+            );
+        }
+
         dbg::leave();
         return;
     }
@@ -1166,7 +1230,17 @@ package bisect
     {
         dbg::enter();
         my @command = ( 'git', 'bisect', 'old', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            util::throw(
+                ( $err =~ /You need to start/i )
+                    ? util::localize( 'Not in a bisect session. Start one with \'gim bisect start\' first.' )
+                    : util::localize( 'Failure while marking commit.' ) . "\n" . $err . "\n"
+            );
+        }
+
         dbg::leave();
         return;
     }
@@ -1175,7 +1249,17 @@ package bisect
     {
         dbg::enter();
         my @command = ( 'git', 'bisect', 'skip', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            util::throw(
+                ( $err =~ /You need to start/i )
+                    ? util::localize( 'Not in a bisect session. Start one with \'gim bisect start\' first.' )
+                    : util::localize( 'Failure while skipping commit.' ) . "\n" . $err . "\n"
+            );
+        }
+
         dbg::leave();
         return;
     }
@@ -1203,7 +1287,17 @@ package bisect
             push( @command, 'bisect/new' );
         }
 
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            util::throw(
+                ( $err =~ /bisect.new/i || $err =~ /invalid ref/i || $err =~ /pathspec/i )
+                    ? util::localize( "Cannot end bisect: no 'new' commit has been marked yet." )
+                    : util::localize( 'Failure while ending bisect.' ) . "\n" . $err . "\n"
+            );
+        }
+
         dbg::leave();
         return;
     }
@@ -1432,7 +1526,38 @@ package clone
     {
         dbg::enter();
         my @command = ( 'git', 'clone', '--quiet', '--no-local', '--', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            my $url = $ARGV[0] // '';
+
+            if ( $err =~ /not found/i || $err =~ /does not exist/i || $err =~ /Repository not found/i )
+            {
+                util::throw( util::localize( "Repository '[_1]' not found or not accessible.", $url ) );
+            }
+            elsif ( $err =~ /already exists/i )
+            {
+                my $dir = $ARGV[1] // ( $url =~ m{([^/]+?)(?:\.git)?$} )[0] // $url;
+                util::throw( util::localize( "'[_1]' already exists. Choose a different target directory.", $dir ) );
+            }
+            elsif ( $err =~ /Authentication failed/i || $err =~ /could not read Username/i )
+            {
+                util::throw( util::localize( "Authentication failed for '[_1]'. Check your credentials.", $url ) );
+            }
+            elsif ( $err =~ /Could not resolve host/i || $err =~ /unable to connect/i || $err =~ /network/i )
+            {
+                util::throw( util::localize( "Could not reach '[_1]'. Check your network connection.", $url ) );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( "Cloning '[_1]' failed.", $url ) .
+                    "\n" . $err . "\n"
+                );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -1479,7 +1604,31 @@ package clonehub
         }
 
         push( @command, '--', '--quiet', '--no-local', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $rc == -1 || $err =~ /command not found/i || $err =~ /not.*found.*gh\b/i )
+            {
+                util::throw( util::localize( "The 'gh' CLI tool is not installed or not in PATH." ) );
+            }
+            elsif ( $err =~ /not logged/i || $err =~ /authentication/i || $err =~ /auth.*login/i )
+            {
+                util::throw( util::localize( "Not logged in to GitHub. Run 'gh auth login' first." ) );
+            }
+            elsif ( $err =~ /not found/i || $err =~ /Could not resolve/i || $err =~ /does not exist/i )
+            {
+                util::throw( util::localize( "Repository '[_1]' not found on GitHub, or you do not have access.", $repo ) );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( "Cloning '[_1]' from GitHub failed.", $repo ) .
+                    "\n" . $err . "\n"
+                );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -1750,14 +1899,45 @@ package fetch
 
         dbg::msg( 'Fetching from remote, pruning tags' );
         @command = ( 'git', 'fetch', '--all', '--prune', '--prune-tags' );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /no remote/i || $err =~ /remote.*not.*found/i || $err =~ /No configured remotes/i )
+            {
+                util::throw( util::localize( "No remote configured. Add one with 'gim remote add'." ) );
+            }
+            elsif ( $err =~ /Could not resolve host/i || $err =~ /unable to connect/i || $err =~ /timed? ?out/i )
+            {
+                util::throw( util::localize( 'Could not reach remote. Check your network connection.' ) );
+            }
+            elsif ( $err =~ /Authentication failed/i || $err =~ /could not read Username/i || $err =~ /Permission denied/i )
+            {
+                util::throw( util::localize( 'Authentication failed. Check your credentials or SSH keys.' ) );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( 'Fetch failed.' ) .
+                    "\n" . $err . "\n"
+                );
+            }
+        }
 
         foreach my $tag ( @tags )
         {
             dbg::msg( "Re-applying lightweight tag \"$tag->[0] $tag->[1]\"" );
             @command = ( 'git', 'tag', $tag->[0], $tag->[1] );
-            executor::run( \@command );
+            my ( undef, $tag_err, $tag_rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+            if ( $tag_rc != 0 )
+            {
+                warn( fmt::warning(
+                    util::localize( "Could not re-apply lightweight tag '[_1]': target commit may no longer exist.", $tag->[0] )
+                ) );
+            }
         }
+
 
         if ( ! defined( $quiet ) )
         {
@@ -2377,7 +2557,24 @@ package merge
 
         if ( $rc != 0 )
         {
-            print( fmt::warning( util::localize( 'Merge encountered conflicts. Please resolve with ‘gim resolve’, then run ‘gim commit’.' ) ) );
+            if ( $rc == 1 && ( $err =~ /Merge conflict/i || $err =~ /CONFLICT/i || $out =~ /CONFLICT/i ) )
+            {
+                print( fmt::warning( util::localize( "Merge encountered conflicts. Please resolve with 'gim resolve', then run 'gim commit'." ) ) );
+            }
+            elsif ( $err =~ /not something we can merge/i || $err =~ /ambiguous argument/i || $err =~ /unknown revision/i )
+            {
+                my $branch = $ARGV[0] // '';
+                util::throw( util::localize( "'[_1]' is not a known branch or commit.", $branch ) );
+            }
+            elsif ( $err =~ /unrelated histories/i )
+            {
+                my $branch = $ARGV[0] // '';
+                util::throw( util::localize( "'[_1]' has no common history with the current branch. Use 'gim base' to inspect.", $branch ) );
+            }
+            else
+            {
+                print( fmt::warning( util::localize( "Merge encountered conflicts. Please resolve with 'gim resolve', then run 'gim commit'." ) ) );
+            }
         }
 
         dbg::leave();
@@ -2416,10 +2613,40 @@ package mkbranch
     sub run ( $self )
     {
         dbg::enter();
-        my @command = ( 'git', 'branch', '--', $ARGV[0] );
-        executor::run( \@command );
+        my $name = $ARGV[0];
+        my @command = ( 'git', 'branch', '--', $name );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /already exists/i )
+            {
+                util::throw( util::localize( "Branch '[_1]' already exists.", $name ) );
+            }
+            elsif ( $err =~ /not a valid/i || $err =~ /invalid/i )
+            {
+                util::throw( util::localize( "'[_1]' is not a valid branch name.", $name ) );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( "Could not create branch '[_1]'.", $name ) .
+                    "\n" . $err . "\n"
+                );
+            }
+        }
+
         $command[1] = 'switch';
-        executor::run( \@command );
+        ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            util::throw(
+                util::localize( "Branch '[_1]' was created but switching to it failed.", $name ) .
+                "\n" . $err . "\n"
+            );
+        }
+
         dbg::leave();
         return;
     }
@@ -2507,10 +2734,23 @@ package mkpatch
             return;
         }
 
-        my @command = ( 'tar', 'czf', $ARGV[0] // 'patch.tgz', '--', @files );
-        executor::run( \@command, throw_on_fail => 0 );
+        my $archive = $ARGV[0] // 'patch.tgz';
+        my @command = ( 'tar', 'czf', $archive, '--', @files );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            util::throw(
+                util::localize( "Could not create archive '[_1]'.", $archive ) .
+                ( $err =~ /No space/i ? util::localize( ' Disk full?' )
+                : $err =~ /Permission/i ? util::localize( ' Permission denied.' )
+                : "\n" . $err . "\n" )
+            );
+        }
+
         dbg::leave();
         return;
+
     }
 
 $_help{ mkpatch } =
@@ -2755,7 +2995,33 @@ package push
             push( @command, ( '--set-upstream', $remote, $self->{ 'branch.head' } ) );
         }
 
-        executor::run( \@command );
+        my $out;
+
+        ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /non-fast-forward/i || $err =~ /rejected/i )
+            {
+                util::throw( util::localize( "Push rejected: remote has commits you don't have. Run 'gim pull' first, or use '--force' if you are sure." ) );
+            }
+            elsif ( $err =~ /Authentication failed/i || $err =~ /Permission denied/i || $err =~ /could not read Username/i )
+            {
+                util::throw( util::localize( 'Push failed: authentication error. Check your credentials or SSH keys.' ) );
+            }
+            elsif ( $err =~ /Could not resolve host/i || $err =~ /unable to connect/i || $err =~ /timed? ?out/i )
+            {
+                util::throw( util::localize( 'Push failed: could not reach remote. Check your network connection.' ) );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( 'Push failed.' ) .
+                    "\n" . $err . "\n"
+                );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -2825,7 +3091,17 @@ package rebase
         dbg::enter();
         util::argv_check( -1, 0 );
         my @command = ( 'git', 'rebase', '--abort' );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            util::throw(
+                ( $err =~ /No rebase in progress/i )
+                    ? util::localize( 'No rebase in progress. Nothing to abort.' )
+                    : util::localize( 'Abort failed.' ) . "\n" . $err . "\n"
+            );
+        }
+
         dbg::leave();
         return;
     }
@@ -2835,7 +3111,27 @@ package rebase
         dbg::enter();
         util::argv_check( -1, 0 );
         my @command = ( 'git', 'rebase', '--continue' );
-        executor::run( \@command, interactive => 1 );
+        my ( $out, $err, $rc ) = executor::run( \@command, interactive => 1, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /unresolved conflict/i || $err =~ /you have unmerged/i || $err =~ /needs merge/i )
+            {
+                util::throw( util::localize( "Cannot continue: there are still unresolved conflicts. Run 'gim resolve' first." ) );
+            }
+            elsif ( $err =~ /nothing to commit/i || $err =~ /empty/i )
+            {
+                util::throw( util::localize( "Rebase produced an empty commit. Use 'gim rebase abort' or resolve the situation manually." ) );
+            }
+            elsif ( $rc != 0 )
+            {
+                util::throw(
+                    util::localize( 'Rebase continue failed.' ) .
+                    "\n" . $err . "\n"
+                );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -2892,8 +3188,19 @@ package remote
     sub add ( $self )
     {
         dbg::enter();
+        my $name = $ARGV[0] // '';
         my @command = ( 'git', 'remote', 'add', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            util::throw(
+                ( $err =~ /already exists/i )
+                    ? util::localize( "A remote named '[_1]' already exists. Use 'gim remote rename' to rename it.", $name )
+                    : util::localize( "Could not add remote '[_1]'.", $name ) . "\n" . $err . "\n"
+            );
+        }
+
         dbg::leave();
         return;
     }
@@ -2901,8 +3208,19 @@ package remote
     sub remove ( $self )
     {
         dbg::enter();
+        my $name = $ARGV[0] // '';
         my @command = ( 'git', 'remote', 'remove', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            util::throw(
+                ( $err =~ /No such remote/i || $err =~ /does not exist/i || $err =~ /not.*found/i )
+                    ? util::localize( "No remote named '[_1]'. Use 'gim info' to list configured remotes.", $name )
+                    : util::localize( "Could not remove remote '[_1]'.", $name ) . "\n" . $err . "\n"
+            );
+        }
+
         dbg::leave();
         return;
     }
@@ -2910,8 +3228,27 @@ package remote
     sub rename ( $self )
     {
         dbg::enter();
+        my $old = $ARGV[0] // '';
+        my $new = $ARGV[1] // '';
         my @command = ( 'git', 'remote', 'rename', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /No such remote/i || $err =~ /does not exist/i || $err =~ /not.*found/i )
+            {
+                util::throw( util::localize( "No remote named '[_1]'. Use 'gim info' to list configured remotes.", $old ) );
+            }
+            elsif ( $err =~ /already exists/i )
+            {
+                util::throw( util::localize( "A remote named '[_1]' already exists.", $new ) );
+            }
+            else
+            {
+                util::throw( util::localize( "Could not rename remote '[_1]'.", $old ) . "\n" . $err . "\n" );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -2955,7 +3292,24 @@ package reset
     {
         dbg::enter();
         my @command = ( 'git', 'reset', '--mixed', @ARGV );
-        executor::run( \@command, throw_on_fail => 1 );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /shallow/i )
+            {
+                util::throw( util::localize( 'Cannot reset past the shallow boundary of this clone.' ) );
+            }
+            elsif ( $err =~ /ambiguous argument/i || $err =~ /unknown revision/i || $err =~ /not a valid/i )
+            {
+                util::throw( util::localize( "'[_1]' is not a valid commit reference.", $ARGV[0] // '' ) );
+            }
+            else
+            {
+                util::throw( util::localize( 'Reset failed.' ) . "\n" . $err . "\n" );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -3041,10 +3395,18 @@ package revert
         my @command = ( 'git', 'reset', '--', @ARGV );
         executor::run( \@command );
         $command[1] = 'restore';
-        # This silences all fails, but is necessary to avoid errors
-        # when the adding of files has been reset. A better choice
-        # would be checking @ARGV for files that are still tracked.
-        executor::run( \@command, throw_on_fail => 0 );
+        # throw_on_fail=>0 is intentional: git restore fails for files that were
+        # previously 'git add'-ed but not yet committed, because after the reset
+        # they are no longer in the index. We only surface *unexpected* errors.
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 && $err !~ /did not match any file/i && $err !~ /pathspec.*not known/i )
+        {
+            util::throw(
+                util::localize( 'Could not restore file(s).' ) .
+                "\n" . $err . "\n"
+            );
+        }
 
         if ( defined( $clean ) )
         {
@@ -3233,7 +3595,29 @@ package rm
         );
         util::filespec_check( 'TRACKED', @ARGV );
         push( @command, '--', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /has changes staged/i || $err =~ /modified/i || $err =~ /Override with -f/i )
+            {
+                my $file = ( $err =~ /'([^']+)'/ ) ? $1 : join( ', ', @ARGV );
+                util::throw( util::localize( "'[_1]' has local modifications. Use '--force' / '-f' to override.", $file ) );
+            }
+            elsif ( $err =~ /not removing.*recursive/i || $err =~ /is a directory/i )
+            {
+                my $dir = ( $err =~ /'([^']+)'/ ) ? $1 : join( ', ', @ARGV );
+                util::throw( util::localize( "'[_1]' is a directory. Use '--recurse' / '-r' to remove it recursively.", $dir ) );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( 'Removing file(s) failed.' ) .
+                    "\n" . $err . "\n"
+                );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -3303,7 +3687,36 @@ package rmbranch
             @command = ( 'git', 'branch', '--delete', '--force', '--', $ARGV[0] );
         }
 
-        executor::run( \@command );
+        my $branch = $ARGV[0] // '';
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /checked out/i || $err =~ /currently checkout/i )
+            {
+                util::throw( util::localize( "Cannot delete the currently checked-out branch '[_1]'. Switch to another branch first.", $branch ) );
+            }
+            elsif ( $err =~ /not.*found/i || $err =~ /no.*branch/i || $err =~ /does not exist/i || $err =~ /error.*\Q$branch\E/i )
+            {
+                util::throw(
+                    defined( $remote )
+                        ? util::localize( "Branch '[_1]' does not exist on remote '[_2]'.", $branch, $remote )
+                        : util::localize( "Branch '[_1]' does not exist.", $branch )
+                );
+            }
+            elsif ( defined( $remote ) && ( $err =~ /Authentication/i || $err =~ /Permission denied/i ) )
+            {
+                util::throw( util::localize( "Could not delete remote branch: authentication failed. Check your credentials." ) );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( "Could not delete branch '[_1]'.", $branch ) .
+                    "\n" . $err . "\n"
+                );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -3795,6 +4208,24 @@ package stash
         dbg::enter();
         my @command = ( 'git', 'stash', 'apply', @ARGV );
         my ( $out, $err, $rc ) = executor::run( \@command, interactive => 1, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /CONFLICT/i || $err =~ /conflict/i )
+            {
+                warn( fmt::warning( util::localize( "Stash apply resulted in conflicts. Resolve with 'gim resolve'." ) ) );
+            }
+            elsif ( $err =~ /is not a stash/i || $err =~ /No stash/i || $err =~ /bad revision/i )
+            {
+                my $idx = $ARGV[0] // '';
+                util::throw( util::localize( "No stash entry '[_1]'. Use 'gim stash list' to see available entries.", $idx ) );
+            }
+            else
+            {
+                util::throw( util::localize( 'Stash apply failed.' ) . "\n" . $err . "\n" );
+            }
+        }
+
         dbg::leave();
         return $rc;
     }
@@ -3802,8 +4233,26 @@ package stash
     sub branch ( $self )
     {
         dbg::enter();
+        my $name = $ARGV[0] // '';
         my @command = ( 'git', 'stash', 'branch', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /already exists/i )
+            {
+                util::throw( util::localize( "Branch '[_1]' already exists.", $name ) );
+            }
+            elsif ( $err =~ /No stash/i || $err =~ /is not a stash/i || $err =~ /bad revision/i )
+            {
+                util::throw( util::localize( "No stash entry found. Use 'gim stash list' to see available entries." ) );
+            }
+            else
+            {
+                util::throw( util::localize( "Could not create branch '[_1]' from stash.", $name ) . "\n" . $err . "\n" );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -3821,7 +4270,18 @@ package stash
     {
         dbg::enter();
         my @command = ( 'git', 'stash', 'drop', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            my $idx = $ARGV[0] // '';
+            util::throw(
+                ( $err =~ /is not a stash/i || $err =~ /No stash/i || $err =~ /bad revision/i )
+                    ? util::localize( "No stash entry '[_1]'. Use 'gim stash list' to see available entries.", $idx )
+                    : util::localize( 'Stash drop failed.' ) . "\n" . $err . "\n"
+            );
+        }
+
         dbg::leave();
         return;
     }
@@ -3863,6 +4323,23 @@ package stash
         dbg::enter();
         my @command = ( 'git', 'stash', 'pop', @ARGV );
         my ( $out, $err, $rc ) = executor::run( \@command, interactive => 1, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /CONFLICT/i || $err =~ /conflict/i )
+            {
+                warn( fmt::warning( util::localize( "Stash pop resulted in conflicts. Resolve with 'gim resolve'. The stash entry has been kept." ) ) );
+            }
+            elsif ( $err =~ /No stash/i || $err =~ /is not a stash/i || $err =~ /bad revision/i )
+            {
+                util::throw( util::localize( 'Stash is empty. Nothing to pop.' ) );
+            }
+            else
+            {
+                util::throw( util::localize( 'Stash pop failed.' ) . "\n" . $err . "\n" );
+            }
+        }
+
         dbg::leave();
         return $rc;
     }
@@ -4135,12 +4612,12 @@ package switch
         );
         util::argv_check( 1, 1 );
         push( @command, '--', $ARGV[0] );
-        my ( $out, $err, $rc ) = executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
 
         if ( $rc == 128 )
         {
             @command = ( 'git', 'rev-parse', $ARGV[0] . '^{commit}' );
-            ( $out, $err, $rc ) = executor::run( \@command );
+            ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
 
             if ( $rc == 0 )
             {
@@ -4161,11 +4638,21 @@ package switch
         }
         else
         {
-            util::throw(
-                util::localize( 'Failure while executing ‘[_1]’.', 'gim switch' ) .
-                util::localize( '‘[_1]’ returned ‘[_2]’:', 'gim switch', $rc ) .
-                $err . "\n"
-            );
+            if ( $err =~ /did not match any file/i || $err =~ /invalid reference/i || $err =~ /pathspec.*not.*known/i )
+            {
+                util::throw( util::localize( "'[_1]' is not a known branch. Use 'gim log --all' to list branches.", $ARGV[0] ) );
+            }
+            elsif ( $err =~ /local changes/i || $err =~ /Your local changes/i || $err =~ /overwritten by checkout/i )
+            {
+                util::throw( util::localize( "Cannot switch: working directory has local modifications. Commit, stash ('gim stash'), or revert them first." ) );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( "'[_1]' is not a known branch.", $ARGV[0] ) .
+                    "\n" . $err . "\n"
+                );
+            }
         }
 
         dbg::leave();
@@ -4267,7 +4754,31 @@ package tag
         }
 
         push( @command, '--', @ARGV );
-        executor::run( \@command, interactive => ! defined( $light ) && ! ( defined( $file ) || defined( $msg ) ) );
+        my $tag_name = $ARGV[0] // '';
+        my ( $out, $err, $rc ) = executor::run( \@command,
+            interactive => ! defined( $light ) && ! ( defined( $file ) || defined( $msg ) ),
+            throw_on_fail => 0
+        );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /already exists/i )
+            {
+                util::throw( util::localize( "Tag '[_1]' already exists. Delete it first with 'gim tag delete [_1]'.", $tag_name ) );
+            }
+            elsif ( $err =~ /not a valid/i || $err =~ /invalid/i || $err =~ /bad tag/i )
+            {
+                util::throw( util::localize( "'[_1]' is not a valid tag name.", $tag_name ) );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( "Could not create tag '[_1]'.", $tag_name ) .
+                    "\n" . $err . "\n"
+                );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -4307,7 +4818,15 @@ package tag
                     if ( defined( $answer ) && $answer =~ m/^\s*y(?:es)?\s*$/i )
                     {
                         my @push_cmd = ( 'git', 'push', $remote, '--delete', $tag );
-                        executor::run( \@push_cmd, interactive => 1, throw_on_fail => 0 );
+                        my ( $push_out, $push_err, $push_rc ) = executor::run( \@push_cmd, interactive => 1, throw_on_fail => 0 );
+
+                        if ( $push_rc != 0 )
+                        {
+                            warn( fmt::warning(
+                                util::localize( "Could not delete tag '[_1]' on remote '[_2]'. The local copy will still be deleted.", $tag, $remote ) .
+                                "\n" . $push_err . "\n"
+                            ) );
+                        }
                     }
                 }
             }
@@ -4557,7 +5076,17 @@ package uncommit
     {
         dbg::enter();
         my @command = ( 'git', 'reset', '--mixed', $self->{ history }[-1] );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            util::throw(
+                ( $err =~ /shallow/i )
+                    ? util::localize( 'Cannot uncommit past the shallow boundary of this clone.' )
+                    : util::localize( 'Uncommit failed.' ) . "\n" . $err . "\n"
+            );
+        }
+
         dbg::leave();
         return;
     }
@@ -4650,7 +5179,27 @@ package pick
             my @command = ();
 
             @command = ( 'git', 'restore', '--source=@{u}', '--', @ARGV );
-            executor::run( \@command );
+            my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+            if ( $rc != 0 )
+            {
+                if ( $err =~ /no upstream/i || $err =~ /no such upstream/i || $err =~ /@\{u\}/i )
+                {
+                    util::throw( util::localize( "Upstream changes not available locally. Run 'gim fetch' first." ) );
+                }
+                elsif ( $err =~ /did not match/i || $err =~ /pathspec.*not known/i )
+                {
+                    my $file = join( ', ', @ARGV );
+                    util::throw( util::localize( "'[_1]' does not exist on the upstream branch.", $file ) );
+                }
+                else
+                {
+                    util::throw(
+                        util::localize( 'Pick failed.' ) .
+                        "\n" . $err . "\n"
+                    );
+                }
+            }
         }
 
         dbg::leave();
