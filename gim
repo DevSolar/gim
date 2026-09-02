@@ -1015,7 +1015,29 @@ package add
         # removal from version control, which was considered
         # surprising (a.k.a. 'bad').
         my @command = ( 'git', 'add', '--intent-to-add', '--no-all', '--', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /not a git repository/i || $err =~ /uninitiali[sz]ed/i )
+            {
+                my $file = ( $err =~ /'([^']+)'/ ) ? $1 : join( ', ', @ARGV );
+                util::throw( util::localize( "Cannot add '[_1]': it appears to be inside an uninitialised submodule.", $file ) );
+            }
+            elsif ( $err =~ /did not match any file/i || $err =~ /pathspec.*not known/i )
+            {
+                my $file = join( ', ', @ARGV );
+                util::throw( util::localize( "No file found matching '[_1]'.", $file ) );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( 'Could not add file(s) to version control.' ) .
+                    "\n" . $err . "\n"
+                );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -1407,7 +1429,28 @@ package blame
             }
         }
 
-        $exe->close_exe();
+        local $@ = '';
+        eval { $exe->close_exe(); };
+
+        if ( $@ )
+        {
+            my $err = $exe->{ errors } // $@;
+
+            if ( $err =~ /binary file/i || $err =~ /Cannot annotate non-blob/i )
+            {
+                my $file = join( ', ', @ARGV );
+                util::throw( util::localize( "'[_1]' is a binary file and cannot be annotated.", $file ) );
+            }
+            elsif ( $err =~ /unknown revision/i || $err =~ /bad revision/i || $err =~ /ambiguous/i )
+            {
+                util::throw( util::localize( "Invalid revision specified. Use 'gim log' to find the correct commit hash." ) );
+            }
+            else
+            {
+                util::throw( util::localize( 'Blame failed.' ) . "\n" . $err . "\n" );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -1448,9 +1491,39 @@ package chmod
         my $mode = shift( @ARGV );
         util::filespec_check( 'TRACKED', @ARGV );
         my @command = ( 'chmod', $mode, @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /Operation not permitted/i || $err =~ /Permission denied/i )
+            {
+                util::throw( util::localize( "Permission denied: cannot change mode of '[_1]'.", join( ', ', @ARGV ) ) );
+            }
+            elsif ( $err =~ /invalid mode/i || $err =~ /No such file/i )
+            {
+                util::throw( util::localize( "'[_1]' is not a valid mode or file not found.", $mode ) );
+            }
+            else
+            {
+                util::throw( util::localize( "chmod failed for '[_1]'.", join( ', ', @ARGV ) ) . "\n" . $err . "\n" );
+            }
+        }
+
         @command = ( 'git', 'update-index', '--chmod=' . $mode, '--', @ARGV );
-        executor::run( \@command );
+        ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /invalid value/i || $err =~ /option.*chmod/i )
+            {
+                util::throw( util::localize( "'[_1]' is not a valid chmod value for git. Use '+x' or '-x'.", $mode ) );
+            }
+            else
+            {
+                util::throw( util::localize( "Could not update permissions for '[_1]' in the git index.", join( ', ', @ARGV ) ) . "\n" . $err . "\n" );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -1716,7 +1789,40 @@ package commit
             push( @command, '--all' );
         }
 
-        executor::run( \@command, interactive => ! ( defined( $file ) || defined( $msg ) ) );
+        my ( $out, $err, $rc ) = executor::run( \@command,
+            interactive  => ! ( defined( $file ) || defined( $msg ) ),
+            throw_on_fail => 0
+        );
+
+        if ( $rc != 0 )
+        {
+            if ( $err =~ /nothing to commit/i || $out =~ /nothing to commit/i || $err =~ /nothing added to commit/i )
+            {
+                util::throw( util::localize( "Nothing to commit. Use 'gim status' to see the current state." ) );
+            }
+            elsif ( $rc == 1 && $err =~ /\bhook\b/i )
+            {
+                # Strip "running hook" boilerplate; show only hook's own output
+                ( my $hook_out = $err ) =~ s/^.*\bhook\b[^\n]*\n?//im;
+                util::throw( util::localize( 'Commit rejected by a commit hook.' ) . "\n" . $hook_out );
+            }
+            elsif ( $err =~ /detached HEAD/i )
+            {
+                util::throw( util::localize( "In detached HEAD state. Switch to a branch with 'gim switch <branch>' before committing." ) );
+            }
+            elsif ( $err =~ /empty commit message/i || $err =~ /Aborting commit/i )
+            {
+                util::throw( util::localize( 'Commit aborted: no commit message provided.' ) );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( 'Commit failed.' ) .
+                    "\n" . $err . "\n"
+                );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -1777,7 +1883,24 @@ package contains
             print( {$self->{ out }} $_ );
         }
 
-        $exe->close_exe();
+        local $@ = '';
+        eval { $exe->close_exe(); };
+
+        if ( $@ )
+        {
+            my $err = $exe->{ errors } // $@;
+            my $rev = $ARGV[0] // '';
+
+            if ( $err =~ /unknown revision/i || $err =~ /bad.*object/i || $err =~ /ambiguous/i )
+            {
+                util::throw( util::localize( "'[_1]' is not a known commit, branch, or tag. Use 'gim log' to find valid references.", $rev ) );
+            }
+            else
+            {
+                util::throw( util::localize( 'Contains query failed.' ) . "\n" . $err . "\n" );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -1825,7 +1948,28 @@ package diff
             print( {$self->{ out }} $_ );
         }
 
-        $exe->close_exe();
+        local $@ = '';
+        eval { $exe->close_exe(); };
+
+        if ( $@ )
+        {
+            my $err = $exe->{ errors } // $@;
+
+            if ( $err =~ /unknown revision/i || $err =~ /ambiguous argument/i )
+            {
+                my $rev = ( grep { /^[0-9a-f]{4}|HEAD|~|\^/ } @ARGV )[0] // $ARGV[0] // '';
+                util::throw( util::localize( "'[_1]' is not a valid commit reference. Use 'gim log' to find the right one.", $rev ) );
+            }
+            elsif ( $err =~ /does not have any commits/i || $err =~ /no common ancestor/i )
+            {
+                util::throw( util::localize( 'Cannot diff: no commit history yet. Make at least one commit first.' ) );
+            }
+            else
+            {
+                util::throw( util::localize( 'Diff failed.' ) . "\n" . $err . "\n" );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -2242,12 +2386,24 @@ package info
 
         # Remote and URL
         my @command = ( 'git', 'config', "remote.$remote.url" );
-        my ( $out, $err, $rc ) = executor::run( \@command );
-        chomp $out;
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        my $url;
+
+        if ( $rc != 0 )
+        {
+            $url = fmt::warning( util::localize( '(no URL configured)' ) );
+        }
+        else
+        {
+            chomp $out;
+            $url = fmt::url( $out );
+        }
+
         printf( {$self->{ out }}
             "  %s  %s\n",
             fmt::remote( $remote ),
-            fmt::url( $out )
+            $url
         );
 
         # Remote Branches
