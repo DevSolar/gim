@@ -950,7 +950,23 @@ package worker
             push( @history, $_ );
         }
 
-        $exe->close_exe();
+        local $@ = '';
+        eval { $exe->close_exe(); };
+
+        if ( $@ )
+        {
+            my $err = $exe->{ errors } // $@;
+
+            if ( $err =~ /does not have any commits/i || $err =~ /unknown revision.*HEAD/i )
+            {
+                util::throw( util::localize( "No commits yet. Use 'gim commit' to make the first commit." ) );
+            }
+            else
+            {
+                die $@;
+            }
+        }
+
         push( @command, '--not', '--remotes' );
         dbg::msg( 'Unpublished:' );
         $exe = executor->new( \@command );
@@ -1938,8 +1954,14 @@ package diff
         my $opts = $cfg->val( 'options', 'diff' );
         my $prev;
         ::GetOptions(
-            'prev|p:1' => sub { unshift( @ARGV, "HEAD~$prev" ); }
+            'prev|p:1' => \$prev
         );
+
+        if ( defined $prev )
+        {
+            unshift( @ARGV, "HEAD~$prev" );
+        }
+
         my @command = ( 'git', 'diff', '--color=always', '--src-prefix=src: ', '--dst-prefix=dst: ', $cfg->val( 'options', 'diff' ), @ARGV );
         my $exe = executor->new( \@command );
 
@@ -2947,7 +2969,38 @@ package mv
         pop( @from_specs );
         util::filespec_check( 'TRACKED', @from_specs );
         my @command = ( 'git', 'mv', '--', @ARGV );
-        executor::run( \@command );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        if ( $rc != 0 )
+        {
+            my $dest = $ARGV[-1] // '';
+
+            if ( $err =~ /destination exists/i || $err =~ /already exists/i )
+            {
+                util::throw( util::localize( "'[_1]' already exists. Choose a different destination.", $dest ) );
+            }
+            elsif ( $err =~ /overwrite/i && $err =~ /without -f/i )
+            {
+                util::throw( util::localize( "'[_1]' already exists. Use '--force' to overwrite.", $dest ) );
+            }
+            elsif ( $err =~ /not under version control/i || $err =~ /not tracked/i )
+            {
+                my $src = $from_specs[0] // '';
+                util::throw( util::localize( "'[_1]' is not tracked by git. Add it first with 'gim add'.", $src ) );
+            }
+            elsif ( $err =~ /working tree/i || $err =~ /index/i )
+            {
+                util::throw( util::localize( "Cannot move: source file has local modifications. Commit or revert them first." ) );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( 'Move failed.' ) .
+                    "\n" . $err . "\n"
+                );
+            }
+        }
+
         dbg::leave();
         return;
     }
@@ -3000,7 +3053,16 @@ package pull
         {
             bless( $self, 'stash' );
             local @ARGV = ( 'push', '-m', 'gim pull' );
-            $self->run();
+            local $@ = '';
+            eval { $self->run(); };
+
+            if ( $@ )
+            {
+                util::throw(
+                    util::localize( "Could not save local changes before pulling. Commit or manually resolve them first." ) .
+                    "\n" . $@
+                );
+            }
         }
 
         bless( $self, 'fetch' );
@@ -3238,6 +3300,39 @@ package rebase
         dbg::enter();
         my @command = ( 'git', 'rebase', @ARGV );
         my ( $out, $err, $rc ) = executor::run( \@command, interactive => 1, throw_on_fail => 0 );
+
+        # When called from pull, --quiet is injected. In that case the caller
+        # checks $rc itself. For direct user invocations we produce diagnostics.
+        my $from_pull = grep { /^--quiet$/ } @ARGV;
+
+        if ( $rc != 0 && ! $from_pull )
+        {
+            if ( $err =~ /CONFLICT/i || $out =~ /CONFLICT/i || $err =~ /Merge conflict/i )
+            {
+                print( fmt::warning( util::localize( "Rebase stopped due to conflicts. Resolve them with 'gim resolve', then run 'gim rebase continue'." ) ) );
+            }
+            elsif ( $err =~ /detached HEAD/i )
+            {
+                util::throw( util::localize( "Cannot rebase in detached HEAD state. Switch to a branch first with 'gim switch <branch>'." ) );
+            }
+            elsif ( $err =~ /already.*in.*progress/i || $err =~ /rebase.*already/i )
+            {
+                util::throw( util::localize( "A rebase is already in progress. Use 'gim rebase continue' or 'gim rebase abort'." ) );
+            }
+            elsif ( $err =~ /Invalid upstream/i || $err =~ /unknown revision/i || $err =~ /ambiguous/i )
+            {
+                my $upstream = ( grep { ! /^-/ } @ARGV )[0] // '';
+                util::throw( util::localize( "'[_1]' is not a valid upstream branch or commit.", $upstream ) );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( 'Rebase failed.' ) .
+                    "\n" . $err . "\n"
+                );
+            }
+        }
+
         dbg::leave();
         return $rc;
     }
@@ -3672,7 +3767,22 @@ package rewrite
 
             $from = $self->{ 'branch.oid' };
             @command = ( 'git', 'switch', $ARGV[0] );
-            executor::run( \@command );
+            my ( $sw_out, $sw_err, $sw_rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+            if ( $sw_rc != 0 )
+            {
+                if ( $sw_err =~ /local changes/i || $sw_err =~ /overwritten/i )
+                {
+                    util::throw( util::localize( "Cannot switch to '[_1]': working directory has local modifications. Commit or stash them first.", $ARGV[0] ) );
+                }
+                else
+                {
+                    util::throw(
+                        util::localize( "Could not switch to branch '[_1]'.", $ARGV[0] ) .
+                        "\n" . $sw_err . "\n"
+                    );
+                }
+            }
         }
         else
         {
@@ -3693,7 +3803,21 @@ package rewrite
 
         if ( $rc != 0 )
         {
-            print( fmt::warning( util::localize( 'Rebase stopped due to conflicts. Resolve conflicts with ‘gim resolve’, then run ‘gim rebase continue’.' ) ) );
+            if ( $err =~ /CONFLICT/i || $out =~ /CONFLICT/i || $err =~ /Merge conflict/i )
+            {
+                print( fmt::warning( util::localize( "Rebase stopped due to conflicts. Resolve conflicts with 'gim resolve', then run 'gim rebase continue'." ) ) );
+            }
+            elsif ( $err =~ /editor.*not.*found/i || $err =~ /EDITOR/i || $err =~ /Terminal is not fully functional/i )
+            {
+                util::throw( util::localize( "No editor configured. Run 'gim setup' to configure one, or set the EDITOR environment variable." ) );
+            }
+            else
+            {
+                util::throw(
+                    util::localize( 'Rewrite failed.' ) .
+                    "\n" . $err . "\n"
+                );
+            }
         }
 
         dbg::leave();
