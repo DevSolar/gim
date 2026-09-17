@@ -3221,7 +3221,33 @@ package push
         {
             if ( $err =~ /non-fast-forward/i || $err =~ /rejected/i )
             {
-                util::throw( util::localize( "Push rejected: remote has commits you don't have. Run 'gim pull' first, or use '--force' if you are sure." ) );
+                my $target_ref = $push || ( defined( $remote ) ? "$remote/" . $self->{ 'branch.head' } : '' ) || '@{push}';
+                my @rev_cmd = ( 'git', 'rev-list', 'HEAD..' . $target_ref );
+                my ( $rev_out, $rev_err, $rev_rc ) = executor::run( \@rev_cmd, throw_on_fail => 0 );
+                my @remote_commits = grep { length } split( "\n", $rev_out );
+
+                my $is_rebased = 0;
+
+                if ( @remote_commits )
+                {
+                    my @reflog_cmd = ( 'git', 'reflog', 'show', '--format=%H', 'refs/heads/' . $self->{ 'branch.head' } );
+                    my ( $reflog_out, $reflog_err, $reflog_rc ) = executor::run( \@reflog_cmd, throw_on_fail => 0 );
+
+                    if ( $reflog_rc == 0 && length( $reflog_out ) )
+                    {
+                        my %reflog_hashes = map { $_ => 1 } grep { length } split( "\n", $reflog_out );
+                        $is_rebased = ! grep { ! $reflog_hashes{ $_ } } @remote_commits;
+                    }
+                }
+
+                if ( $is_rebased )
+                {
+                    util::throw( util::localize( "Push rejected: local history was rebased or amended. Use 'gim push --force' if you are sure, or 'gim pull' to merge." ) );
+                }
+                else
+                {
+                    util::throw( util::localize( "Push rejected: remote has commits you don't have. Run 'gim pull' first, or use '--force' if you are sure." ) );
+                }
             }
             elsif ( $err =~ /Authentication failed/i || $err =~ /Permission denied/i || $err =~ /could not read Username/i )
             {
@@ -4487,15 +4513,16 @@ package stash
     {
         dbg::enter();
         my @command = ( 'git', 'stash', 'apply', @ARGV );
-        my ( $out, $err, $rc ) = executor::run( \@command, interactive => 1, throw_on_fail => 0 );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
 
         if ( $rc != 0 )
         {
-            if ( $err =~ /CONFLICT/i || $err =~ /conflict/i )
+            my $combined = ( $err // '' ) . "\n" . ( $out // '' );
+            if ( $combined =~ /CONFLICT/i || $combined =~ /conflict/i )
             {
                 warn( fmt::warning( util::localize( "Stash apply resulted in conflicts. Resolve with 'gim resolve'." ) ) );
             }
-            elsif ( $err =~ /is not a stash/i || $err =~ /No stash/i || $err =~ /bad revision/i )
+            elsif ( $combined =~ /is not a stash/i || $combined =~ /No stash/i || $combined =~ /bad revision/i )
             {
                 my $idx = $ARGV[0] // '';
                 util::throw( util::localize( "No stash entry '[_1]'. Use 'gim stash list' to see available entries.", $idx ) );
@@ -4602,15 +4629,16 @@ package stash
     {
         dbg::enter();
         my @command = ( 'git', 'stash', 'pop', @ARGV );
-        my ( $out, $err, $rc ) = executor::run( \@command, interactive => 1, throw_on_fail => 0 );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
 
         if ( $rc != 0 )
         {
-            if ( $err =~ /CONFLICT/i || $err =~ /conflict/i )
+            my $combined = ( $err // '' ) . "\n" . ( $out // '' );
+            if ( $combined =~ /CONFLICT/i || $combined =~ /conflict/i )
             {
                 warn( fmt::warning( util::localize( "Stash pop resulted in conflicts. Resolve with 'gim resolve'. The stash entry has been kept." ) ) );
             }
-            elsif ( $err =~ /No stash/i || $err =~ /is not a stash/i || $err =~ /bad revision/i )
+            elsif ( $combined =~ /No stash/i || $combined =~ /is not a stash/i || $combined =~ /bad revision/i )
             {
                 util::throw( util::localize( 'Stash is empty. Nothing to pop.' ) );
             }
