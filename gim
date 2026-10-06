@@ -325,6 +325,91 @@ package util
         return $rc;
     }
 
+    # Returns the chomped first line of $path, or undef if it
+    # cannot be read.
+    sub _read_first_line ( $path )
+    {
+        dbg::enter();
+        my $fh;
+
+        if ( ! open( $fh, '<', $path ) )
+        {
+            dbg::leave();
+            return undef;
+        }
+
+        my $line = <$fh>;
+        close( $fh );
+
+        if ( defined( $line ) )
+        {
+            chomp( $line );
+        }
+
+        dbg::leave();
+        return $line;
+    }
+
+    # Detects an in-progress merge / rebase / am / cherry-pick /
+    # revert / bisect operation by inspecting well-known files and
+    # directories inside the git directory (the same ones Git's own
+    # 'status' long format reads). Returns undef if the repository
+    # is in a normal state, or a hashref ( type => ..., and possibly
+    # branch / onto / step / total ) otherwise.
+    sub repo_state ( $git_dir )
+    {
+        dbg::enter();
+        my $state = undef;
+
+        if ( -f "$git_dir/MERGE_HEAD" )
+        {
+            $state = { type => 'merge' };
+        }
+        elsif ( -f "$git_dir/CHERRY_PICK_HEAD" )
+        {
+            $state = { type => 'cherry-pick' };
+        }
+        elsif ( -f "$git_dir/REVERT_HEAD" )
+        {
+            $state = { type => 'revert' };
+        }
+        elsif ( -d "$git_dir/rebase-merge" )
+        {
+            my $branch = _read_first_line( "$git_dir/rebase-merge/head-name" );
+            $branch =~ s{^refs/heads/}{} if defined( $branch );
+            $state = {
+                type   => 'rebase',
+                branch => $branch,
+                onto   => _read_first_line( "$git_dir/rebase-merge/onto" ),
+                step   => _read_first_line( "$git_dir/rebase-merge/msgnum" ),
+                total  => _read_first_line( "$git_dir/rebase-merge/end" ),
+            };
+        }
+        elsif ( -f "$git_dir/rebase-apply/rebasing" )
+        {
+            $state = {
+                type  => 'rebase',
+                step  => _read_first_line( "$git_dir/rebase-apply/next" ),
+                total => _read_first_line( "$git_dir/rebase-apply/last" ),
+            };
+        }
+        elsif ( -f "$git_dir/rebase-apply/applying" )
+        {
+            $state = {
+                type  => 'am',
+                step  => _read_first_line( "$git_dir/rebase-apply/next" ),
+                total => _read_first_line( "$git_dir/rebase-apply/last" ),
+            };
+        }
+        elsif ( -f "$git_dir/BISECT_LOG" )
+        {
+            $state = { type => 'bisect' };
+        }
+
+        dbg::leave();
+        return $state;
+    }
+
     # Pull subcommand from @ARGV.
     # When called from the top level, checks existence of worker
     # class by that name, and returns an instance of that class.
@@ -840,6 +925,21 @@ package worker
                 util::localize( 'Not inside a git repository.' ) .
                 util::localize( 'Run \'gim init\' or \'gim clone\' first.' )
             );
+        }
+
+        dbg::leave();
+        return;
+    }
+
+    sub init_repo_state ( $self )
+    {
+        dbg::enter();
+        my ( $git_dir, $err, $rc ) = executor::run( [ 'git', 'rev-parse', '--git-dir' ], throw_on_fail => 0 );
+
+        if ( $rc == 0 )
+        {
+            chomp( $git_dir );
+            $self->{ 'repo_state' } = util::repo_state( $git_dir );
         }
 
         dbg::leave();
@@ -4832,7 +4932,52 @@ package status
         dbg::enter();
         $self->init_status();
         $self->init_ahead_behind();
+        $self->init_repo_state();
         $self->init_pager();
+        dbg::leave();
+        return;
+    }
+
+    sub repo_state_warning ( $self )
+    {
+        dbg::enter();
+        my $state = $self->{ 'repo_state' };
+        my $progress =
+            ( defined( $state->{ 'step' } ) && defined( $state->{ 'total' } ) )
+                ? ' (' . $state->{ 'step' } . '/' . $state->{ 'total' } . ')'
+                : '';
+
+        if ( $state->{ 'type' } eq 'merge' )
+        {
+            print( {$self->{ out }} fmt::warning( util::localize( "Merge in progress. Resolve with 'gim resolve', then run 'gim commit'. To cancel, run 'git merge --abort'." ) ) );
+        }
+        elsif ( $state->{ 'type' } eq 'rebase' )
+        {
+            print( {$self->{ out }}
+                fmt::warning(
+                    defined( $state->{ 'branch' } )
+                        ? util::localize( "Rebasing '[_1]' onto [_2][_3].", $state->{ 'branch' }, substr( $state->{ 'onto' } // '?', 0, 12 ), $progress )
+                        : util::localize( "Rebase in progress[_1].", $progress )
+                ) );
+            print( {$self->{ out }} fmt::warning( util::localize( "Resolve with 'gim resolve', then run 'gim rebase continue'. To cancel, run 'gim rebase abort'." ) ) );
+        }
+        elsif ( $state->{ 'type' } eq 'am' )
+        {
+            print( {$self->{ out }} fmt::warning( util::localize( "Applying patches via 'git am'[_1]. Resolve conflicts, then run 'git am --continue'. To cancel, run 'git am --abort'.", $progress ) ) );
+        }
+        elsif ( $state->{ 'type' } eq 'cherry-pick' )
+        {
+            print( {$self->{ out }} fmt::warning( util::localize( "Cherry-pick in progress. Resolve with 'gim resolve', then run 'git cherry-pick --continue'. To cancel, run 'git cherry-pick --abort'." ) ) );
+        }
+        elsif ( $state->{ 'type' } eq 'revert' )
+        {
+            print( {$self->{ out }} fmt::warning( util::localize( "'git revert' in progress. Resolve with 'gim resolve', then run 'git revert --continue'. To cancel, run 'git revert --abort'." ) ) );
+        }
+        elsif ( $state->{ 'type' } eq 'bisect' )
+        {
+            print( {$self->{ out }} fmt::warning( util::localize( "Bisect session in progress. Continue with 'gim bisect old' / 'gim bisect new', or end it with 'gim bisect end'." ) ) );
+        }
+
         dbg::leave();
         return;
     }
@@ -4925,6 +5070,10 @@ package status
         print( {$self->{ out }} ' ' . util::localize( 'Current branch:' ) );
         $self->current();
 
+        if ( defined( $self->{ 'repo_state' } ) )
+        {
+            $self->repo_state_warning();
+        }
 
         if ( $self->{ 'branch.ahead' } > 0 )
         {
@@ -4947,6 +5096,18 @@ package status
 
         my $exe = executor->new( \@command );
 
+        # While a merge / rebase / 'git am' / cherry-pick / revert is in
+        # progress, index-column entries reflect conflict-resolution
+        # machinery rather than deliberately staged content (gim has no
+        # staging workflow of its own). Re-render such lines so the
+        # status letter shows up in the worktree column instead, in the
+        # same red that an intent-to-add file already uses, rather than
+        # git's usual green "staged" look.
+        my $repo_state = $self->{ 'repo_state' };
+        my $resolving =
+            defined( $repo_state ) &&
+            $repo_state->{ 'type' } ne 'bisect';
+
         while ( $exe->readln() )
         {
             if ( $exe->{ 'linecount' } == 1 )
@@ -4954,7 +5115,17 @@ package status
                 print( {$self->{ out }} ' ' . util::localize( 'Local:' ) );
             }
 
-            print( {$self->{ out }} '   ' . $_ );
+            my $line = $_;
+
+            if ( $resolving )
+            {
+                $line =~ s{ ^ \x1b\[\d+m ( [MADRC] ) \x1b\[m \x20\x20 }
+                           { ' ' . "\x1b[31m" . $1 . "\x1b[m" . ' ' }ex;
+                $line =~ s{ ^ ( [MADRC] ) \x20\x20 }
+                           { ' ' . $1 . ' ' }ex;
+            }
+
+            print( {$self->{ out }} '   ' . $line );
         }
 
         $exe->close_exe();
@@ -4982,6 +5153,9 @@ Shows a summary of:
 
 - which branch you are working on,
 
+- whether a merge, rebase, 'git am', cherry-pick, revert, or bisect
+  is currently in progress, and how to continue or cancel it,
+
 - which remote branch(es) it pushes to / pulls from,
 
 - which commits are you ahead or behind of the remote branch [*],
@@ -4994,6 +5168,11 @@ Shows a summary of:
 ‘git status --branch --ahead-behind --show-stash’ plus some more,
 in the terse format of ‘git status --short’ plus some improvements
 in presentation.
+
+The in-progress-operation detection reads the same files inside the
+git directory ( ‘MERGE_HEAD’, ‘rebase-merge/’, ‘rebase-apply/’,
+‘CHERRY_PICK_HEAD’, ‘REVERT_HEAD’, ‘BISECT_LOG’ ) that Git's own
+long-format ‘status’ output is based on.
 }};
 
 }
