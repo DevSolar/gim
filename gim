@@ -3618,15 +3618,105 @@ package resolve
         dbg::enter();
         util::argv_check( 0, -1 );
         $self->init_git_dir();
+        $self->init_pager();
         dbg::leave();
         return;
+    }
+
+    # Returns true if $path (an existing file) still contains
+    # unresolved conflict markers. $diff3_style additionally checks
+    # for the '|||||||' common-ancestor marker used by the 'diff3'
+    # and 'zdiff3' merge.conflictstyle settings. On I/O failure, the
+    # file is conservatively treated as still conflicted.
+    sub _conflict_markers_present ( $path, $diff3_style )
+    {
+        dbg::enter();
+        my $fh;
+
+        if ( ! open( $fh, '<:raw', $path ) )
+        {
+            dbg::leave();
+            return 1;
+        }
+
+        local $/ = undef;
+        my $content = <$fh>;
+        close( $fh );
+
+        my $found =
+            ( $content =~ /^<<<<<<< .*\r?$/m ) ||
+            ( $content =~ /^=======\r?$/m ) ||
+            ( $content =~ /^>>>>>>> .*\r?$/m ) ||
+            ( $diff3_style && $content =~ /^\|\|\|\|\|\|\| .*\r?$/m );
+
+        dbg::leave();
+        return $found ? 1 : 0;
     }
 
     sub run ( $self )
     {
         dbg::enter();
-        my @command = ( 'git', 'mergetool', '--no-prompt', '--', @ARGV );
-        executor::run( \@command, interactive => 1, throw_on_fail => 0 );
+
+        my ( $toplevel ) = executor::run( [ 'git', 'rev-parse', '--show-toplevel' ], throw_on_fail => 0 );
+        chomp( $toplevel );
+
+        my ( $style, $style_err, $style_rc ) = executor::run( [ 'git', 'config', '--get', 'merge.conflictstyle' ], throw_on_fail => 0 );
+        chomp( $style );
+        my $diff3_style = ( $style_rc == 0 && ( $style eq 'diff3' || $style eq 'zdiff3' ) );
+
+        my ( $unmerged ) = executor::run(
+            [ 'git', 'diff', '--name-only', '--diff-filter=U', '--', @ARGV ],
+            throw_on_fail => 0
+        );
+
+        my @paths = grep { length( $_ ) } split( /\n/, $unmerged );
+        my @needs_tool = ();
+        my @auto_resolved = ();
+
+        foreach my $path ( @paths )
+        {
+            my $abs = "$toplevel/$path";
+
+            if ( ! -e $abs )
+            {
+                # Both sides agree this path should be gone (or the
+                # user already deleted it as their resolution) --
+                # 'git rm' marks a deletion as resolved, same as
+                # 'git add' does for surviving content.
+                executor::run( [ 'git', 'rm', '--quiet', '--', $abs ], throw_on_fail => 0 );
+                push( @auto_resolved, $path );
+            }
+            elsif ( _conflict_markers_present( $abs, $diff3_style ) )
+            {
+                push( @needs_tool, $abs );
+            }
+            else
+            {
+                executor::run( [ 'git', 'add', '--', $abs ], throw_on_fail => 0 );
+                push( @auto_resolved, $path );
+            }
+        }
+
+        if ( scalar( @auto_resolved ) > 0 )
+        {
+            print( {$self->{ out }} ' ' . util::localize( 'Already resolved by hand, marked as resolved:' ) );
+
+            foreach my $path ( @auto_resolved )
+            {
+                print( {$self->{ out }} "    $path\n" );
+            }
+        }
+
+        if ( scalar( @needs_tool ) > 0 )
+        {
+            my @command = ( 'git', 'mergetool', '--no-prompt', '--', @needs_tool );
+            executor::run( \@command, interactive => 1, throw_on_fail => 0 );
+        }
+        elsif ( scalar( @paths ) == 0 )
+        {
+            print( {$self->{ out }} ' ' . util::localize( 'No conflicts to resolve.' ) );
+        }
+
         dbg::leave();
         return;
     }
@@ -3642,8 +3732,18 @@ $_help{ resolve } =
 By default, will process each file with merge conflicts. By
 specifying filespecs, you can limit the process to those files
 / directories.
+
+Files you already fixed up by hand (no conflict markers left in
+them, or deleted outright) are simply marked as resolved. Any
+remaining conflicted files are handed to your configured merge tool,
+as before.
 },
-    impl => q{A wrapper for ‘git mergetool --no-prompt -- [...]’.
+    impl => q{Finds conflicted files via ‘git diff --name-only
+--diff-filter=U’. For each: if the file is missing, resolves it with
+‘git rm’; if it has no remaining conflict markers (‘<<<<<<<’ /
+‘=======’ / ‘>>>>>>>’, plus ‘|||||||’ if ‘merge.conflictstyle’ is
+‘diff3’ or ‘zdiff3’), resolves it with ‘git add’; otherwise passes it
+to ‘git mergetool --no-prompt’.
 }};
 
 }
