@@ -5154,31 +5154,44 @@ package tag
         );
 
         my @command = (
-            'git', 'for-each-ref', '--sort=-taggerdate',
-            "--format=%(objecttype)\x{1f}%(objectname)\x{1f}%(*objectname:short=8)\x{1f}%(taggerdate:iso)\x{1f}%(taggerdate:relative)\x{1f}%(taggername)\x{1f}%(taggeremail)\x{1f}%(authorname)\x{1f}%(authordate:iso)\x{1f}%(authordate:relative)\x{1f}%(refname:lstrip=2)\x{1f}%(contents:subject)\x{1f}%(contents:body)"
+            'git', 'for-each-ref', '--sort=-creatordate',
+            "--format=%(objecttype)\x{1f}%(objectname)\x{1f}%(*objectname:short=8)\x{1f}%(creatordate:iso)\x{1f}%(creatordate:relative)\x{1f}%(taggername)\x{1f}%(taggeremail)\x{1f}%(authorname)\x{1f}%(authordate:iso)\x{1f}%(authordate:relative)\x{1f}%(refname:lstrip=2)\x{1f}%(contents:subject)\x{1f}%(contents:body)\x{1f}"
         );
 
         if ( @ARGV )
         {
             foreach ( @ARGV )
             {
-                push( @command, 'refs/tags/' . $_ );
+                push( @command, m{^refs/} ? $_ : 'refs/tags/' . $_ );
             }
         }
         else
         {
-            push( @command, 'refs/tags/*' );
+            push( @command, 'refs/tags' );
         }
 
         my $exe = executor->new( \@command );
 
         while ( $exe->readln() )
         {
-            chomp;
-            my ( $type, $taghash, $hash, $tag_iso, $tag_rel, $tagger, $tmail, $author, $auth_iso, $auth_rel, $tag, $subject, $body ) = split( "\x{1f}", $_, 13 );
+            # %(contents:body) may span several lines. Every record ends
+            # with a 13th \x{1f} (after the body), so keep reading lines
+            # until all 13 separators have been seen.
+            my $record = $_;
 
-            my $time_iso = ( $type eq 'tag' ) ? $tag_iso : $auth_iso;
-            my $time_rel = ( $type eq 'tag' ) ? $tag_rel : $auth_rel;
+            while ( ( $record =~ tr/\x{1f}// ) < 13 )
+            {
+                last if ! defined( $exe->readln() );
+                $record .= $_;
+            }
+
+            # Limit 14: the 14th piece is the newline ending the record.
+            my ( $type, $taghash, $hash, $tag_iso, $tag_rel, $tagger, $tmail, $author, $auth_iso, $auth_rel, $tag, $subject, $body ) = split( "\x{1f}", $record, 14 );
+
+            # creatordate is the tagger date for annotated tags and the
+            # commit date for lightweight ones.
+            my $time_iso = $tag_iso;
+            my $time_rel = $tag_rel;
             my $name     = ( $type eq 'tag' ) ? $tagger  : $author;
 
             if ( $type ne 'tag' )
