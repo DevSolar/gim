@@ -264,6 +264,28 @@ package util
         return;
     }
 
+    # Returns the subset of @filespec that is tracked in git.
+    # Non-tracked files and uncommitted additions (if not in the index)
+    # are excluded.
+    sub filter_tracked ( @filespec )
+    {
+        dbg::enter();
+        return () if ! @filespec;
+
+        my @command = ( 'git', 'ls-files', '-z', '--', @filespec );
+        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
+
+        my @tracked;
+        if ( $rc == 0 && defined( $out ) )
+        {
+            my %seen;
+            @tracked = grep { length && ! $seen{ $_ }++ } split( "\0", $out );
+        }
+
+        dbg::leave();
+        return @tracked;
+    }
+
     # Given a basic message and a list of arguments, this function
     # inserts arguments in place of placeholders '[_1]', '[_2]'
     # etc. in the basic message.
@@ -1603,15 +1625,25 @@ package chmod
     {
         dbg::enter();
         my $mode = shift( @ARGV );
-        util::filespec_check( 'TRACKED', @ARGV );
-        my @command = ( 'chmod', $mode, @ARGV );
+        my @tracked = util::filter_tracked( @ARGV );
+
+        if ( ! @tracked )
+        {
+            util::throw(
+                ( @ARGV == 1 )
+                ? util::localize( '‘[_1]’ is not under version control.', $ARGV[0] )
+                : util::localize( 'None of the specified files are under version control.' )
+            );
+        }
+
+        my @command = ( 'chmod', $mode, @tracked );
         my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
 
         if ( $rc != 0 )
         {
             if ( $err =~ /Operation not permitted/i || $err =~ /Permission denied/i )
             {
-                util::throw( util::localize( "Permission denied: cannot change mode of '[_1]'.", join( ', ', @ARGV ) ) );
+                util::throw( util::localize( "Permission denied: cannot change mode of '[_1]'.", join( ', ', @tracked ) ) );
             }
             elsif ( $err =~ /invalid mode/i || $err =~ /No such file/i )
             {
@@ -1619,11 +1651,11 @@ package chmod
             }
             else
             {
-                util::throw( util::localize( "chmod failed for '[_1]'.", join( ', ', @ARGV ) ) . "\n" . $err . "\n" );
+                util::throw( util::localize( "chmod failed for '[_1]'.", join( ', ', @tracked ) ) . "\n" . $err . "\n" );
             }
         }
 
-        @command = ( 'git', 'update-index', '--chmod=' . $mode, '--', @ARGV );
+        @command = ( 'git', 'update-index', '--chmod=' . $mode, '--', @tracked );
         ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
 
         if ( $rc != 0 )
@@ -1634,7 +1666,7 @@ package chmod
             }
             else
             {
-                util::throw( util::localize( "Could not update permissions for '[_1]' in the git index.", join( ', ', @ARGV ) ) . "\n" . $err . "\n" );
+                util::throw( util::localize( "Could not update permissions for '[_1]' in the git index.", join( ', ', @tracked ) ) . "\n" . $err . "\n" );
             }
         }
 
@@ -1895,8 +1927,18 @@ package commit
 
         if ( @ARGV )
         {
-            util::filespec_check( 'TRACKED', @ARGV );
-            push( @command, '--', @ARGV );
+            my @tracked = util::filter_tracked( @ARGV );
+
+            if ( ! @tracked )
+            {
+                util::throw(
+                    ( @ARGV == 1 )
+                    ? util::localize( '‘[_1]’ is not under version control.', $ARGV[0] )
+                    : util::localize( 'None of the specified files are under version control.' )
+                );
+            }
+
+            push( @command, '--', @tracked );
         }
         else
         {
@@ -3867,26 +3909,40 @@ package revert
         ::GetOptions(
             'clean|c' => \$clean
         );
-        my @command = ( 'git', 'reset', '--', @ARGV );
-        executor::run( \@command );
-        $command[1] = 'restore';
-        # throw_on_fail=>0 is intentional: git restore fails for files that were
-        # previously 'git add'-ed but not yet committed, because after the reset
-        # they are no longer in the index. We only surface *unexpected* errors.
-        my ( $out, $err, $rc ) = executor::run( \@command, throw_on_fail => 0 );
 
-        if ( $rc != 0 && $err !~ /did not match any file/i && $err !~ /pathspec.*not known/i )
+        if ( ! @ARGV )
         {
             util::throw(
-                util::localize( 'Could not restore file(s).' ) .
-                "\n" . $err . "\n"
+                util::localize( 'Too few arguments given.' )
             );
+        }
+
+        my @initial_tracked = util::filter_tracked( @ARGV );
+
+        if ( ! @initial_tracked && ! defined( $clean ) )
+        {
+            util::throw(
+                ( @ARGV == 1 )
+                ? util::localize( '‘[_1]’ is not under version control.', $ARGV[0] )
+                : util::localize( 'None of the specified files are under version control.' )
+            );
+        }
+
+        my @command = ( 'git', 'reset', '--', @ARGV );
+        executor::run( \@command );
+
+        my @tracked_to_restore = util::filter_tracked( @ARGV );
+
+        if ( @tracked_to_restore )
+        {
+            my @restore_cmd = ( 'git', 'restore', '--', @tracked_to_restore );
+            executor::run( \@restore_cmd );
         }
 
         if ( defined( $clean ) )
         {
-            splice( @command, 1, 1, 'clean', '--force', '-d', '--quiet' );
-            executor::run( \@command );
+            my @clean_cmd = ( 'git', 'clean', '--force', '-d', '--quiet', '--', @ARGV );
+            executor::run( \@clean_cmd );
         }
 
         dbg::leave();
@@ -5591,7 +5647,18 @@ package unstage
     sub run ( $self )
     {
         dbg::enter();
-        my @command = ( 'git', 'restore', '--staged', '--', @ARGV );
+        my @tracked = util::filter_tracked( @ARGV );
+
+        if ( ! @tracked )
+        {
+            util::throw(
+                ( @ARGV == 1 )
+                ? util::localize( '‘[_1]’ is not under version control.', $ARGV[0] )
+                : util::localize( 'None of the specified files are under version control.' )
+            );
+        }
+
+        my @command = ( 'git', 'restore', '--staged', '--', @tracked );
         executor::run( \@command );
         dbg::leave();
         return;
